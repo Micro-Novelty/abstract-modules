@@ -1,0 +1,163 @@
+name: Test Wheels
+
+on:
+  push:
+    paths:
+      - ".github/workflows/test_wheels.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # Step 1: Fetch the latest release assets once,
+  # then fan-out to the matrix jobs below.
+  # ─────────────────────────────────────────────────
+  get-release:
+    name: Fetch Latest Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      wheel_urls: ${{ steps.fetch.outputs.wheel_urls }}
+      tag: ${{ steps.fetch.outputs.tag }}
+    steps:
+      - name: Fetch latest release wheel URLs
+        id: fetch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/latest)
+          TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Collect all .whl asset download URLs (up to 10)
+          URLS=$(echo "$RELEASE_JSON" \
+            | jq -c '[.assets[] | select(.name | endswith(".whl")) | .browser_download_url] | .[0:10]')
+          echo "wheel_urls=$URLS" >> "$GITHUB_OUTPUT"
+          echo "Found wheels for $TAG:"
+          echo "$URLS" | jq -r '.[]'
+
+  # ─────────────────────────────────────────────────
+  # Step 2: Matrix test across every combination of
+  # runner OS × Python version × wheel
+  # ─────────────────────────────────────────────────
+  test-wheels:
+    name: "Test [${{ matrix.python-version }}] ${{ matrix.os }} — ${{ matrix.wheel_url }}"
+    needs: get-release
+    # Only run when there is at least one wheel
+    if: ${{ needs.get-release.outputs.wheel_urls != '[]' }}
+
+    strategy:
+      fail-fast: false          # run all combos even if one fails
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        os:
+          - ubuntu-latest       # manylinux x86_64 (native)
+          - ubuntu-24.04-arm    # manylinux aarch64 (native GitHub-hosted runner)
+          - macos-13            # macOS x86_64
+          - macos-latest        # macOS arm64 (M-series)
+        wheel_url: ${{ fromJson(needs.get-release.outputs.wheel_urls) }}
+
+        # ── platform-specific filtering ──────────────────────────────────
+        # Each wheel filename encodes its platform tag. We skip wheels that
+        # cannot possibly install on the current runner so the job doesn't
+        # waste time attempting an incompatible install.
+        exclude:
+          # Skip aarch64 wheels on x86_64 runners and vice-versa
+          - os: ubuntu-latest
+            wheel_url: ${{ contains(matrix.wheel_url, 'aarch64') }}
+          - os: ubuntu-24.04-arm
+            wheel_url: ${{ contains(matrix.wheel_url, 'x86_64') }}
+          # Skip Linux wheels on macOS and macOS wheels on Linux
+          - os: macos-13
+            wheel_url: ${{ contains(matrix.wheel_url, 'linux') || contains(matrix.wheel_url, 'musllinux') || contains(matrix.wheel_url, 'manylinux') }}
+          - os: macos-latest
+            wheel_url: ${{ contains(matrix.wheel_url, 'linux') || contains(matrix.wheel_url, 'musllinux') || contains(matrix.wheel_url, 'manylinux') }}
+          - os: ubuntu-latest
+            wheel_url: ${{ contains(matrix.wheel_url, 'macosx') }}
+          - os: ubuntu-24.04-arm
+            wheel_url: ${{ contains(matrix.wheel_url, 'macosx') }}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # ── musllinux wheels need an Alpine container ───────────────────────
+      # We detect this in a setup step and run the real test inside Docker
+      # when needed; otherwise we run directly on the host.
+      - name: Detect musllinux wheel
+        id: detect
+        shell: bash
+        run: |
+          if [[ "${{ matrix.wheel_url }}" == *"musllinux"* ]]; then
+            echo "musl=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "musl=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Checkout repo to get abstract_test.py ──────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Standard (non-musl) path ────────────────────────────────────────
+      - name: Set up Python ${{ matrix.python-version }}
+        if: steps.detect.outputs.musl == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheel
+        if: steps.detect.outputs.musl == 'false'
+        shell: bash
+        run: |
+          curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
+
+      - name: Install wheel
+        if: steps.detect.outputs.musl == 'false'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel.whl
+
+      - name: Run abstract_test.py
+        if: steps.detect.outputs.musl == 'false'
+        shell: bash
+        run: python abstract_test.py
+
+      # ── musllinux path — run inside Alpine container ────────────────────
+      - name: Run musllinux test in Alpine container
+        if: steps.detect.outputs.musl == 'true'
+        uses: addnab/docker-run-action@v3
+        with:
+          # Map Python version to the matching Alpine image
+          image: >-
+            ${{
+              matrix.python-version == '3.10' && 'python:3.10-alpine' ||
+              matrix.python-version == '3.11' && 'python:3.11-alpine' ||
+              'python:3.12-alpine'
+            }}
+          options: -v ${{ github.workspace }}:/workspace
+          run: |
+            set -e
+            apk add --no-cache curl
+            cd /workspace
+            curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
+            pip install --upgrade pip
+            pip install wheel.whl
+            python abstract_test.py
+
+  # ─────────────────────────────────────────────────
+  # Step 3: Gate job — the overall CI is green only
+  # when every matrix job passed.
+  # ─────────────────────────────────────────────────
+  all-passed:
+    name: All wheel tests passed
+    needs: test-wheels
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check matrix result
+        run: |
+          if [[ "${{ needs.test-wheels.result }}" != "success" ]]; then
+            echo "One or more wheel tests FAILED."
+            exit 1
+          fi
+          echo "All wheel tests passed successfully."
