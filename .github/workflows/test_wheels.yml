@@ -277,4 +277,4 @@ jobs:
             echo "❌ One or more wheel tests FAILED."
             exit 1
           fi
-          echo "✅ All wheel tests passed."
+          echo "✅ All wheel tests has passed."
