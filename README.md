@@ -6,7 +6,7 @@ This repository also Contains Python Wheels for:
  - macOS (v10.9+) architecture, supports python 3.10, 3.11, 3.12 only.
    
 [=] Short Description of AbstractIntegratedModule library:
-- Development Stage on PyPi: 0.7.5 Official Release.
+- Development Stage on PyPi: 0.7.6 Official Release.
 - Author and Maintainer: Micro-Novelty and EpsitronNet-bot.
 - library Source-Code is Open-sourced with MIT License.
 - Purpose: Specifically Designed for providing Non-LLM AI Agent Framework for edge Devices, Optimized for ARM64 architecture.
@@ -45,16 +45,8 @@ This repository also Contains Python Wheels for:
   - Robust Advanced prediction capabilities proven effective on ARM64 Using MLP + LSTM Architectures.
   - Transformer Optimized using Cython, to reduce Memory overhead and Reduce CPU Usage, With Reduced Training Time.
 - Changelog:
-    v0.7.5:
+    v0.7.6:
     [=] New features:
-      - Adding Optimization and refinements, especially bug fixes in:
-         - IntegratedPipeline lstm samples creating
-         - IntegratedPipeline shape adaptation
-         - IntegratedPipeline probability calibration
-         - IntegratedPipeline auto generate labels text
-         - IntegratedPipeline MLP samples generation.
-         - Added New specific module in Rust for Parsing JSON values with reduced memory lookup overhead.
-         - You can use this Optimization by using: pip install abstract-weights-core
-            - Note: This Optimization would allow AbstractIntegratedModule faster JSON parsing and much more flexible database handling handled in Rust.
-         - Fixed bug where number of classes can be None in edge cases.
+       - Adding Optimization and refinements for parsing JSON in Rust.
+       - Ensure robustness in calculating Samples similarity to prevent misleading answers in different environment.
 
