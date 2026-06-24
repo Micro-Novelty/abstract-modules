@@ -11,11 +11,18 @@ This repository also Contains Python Wheels for:
 - library Source-Code is Open-sourced with MIT License.
 - Purpose: Specifically Designed for providing Non-LLM AI Agent Framework for edge Devices, Optimized for ARM64 architecture.
   
-- Library installation:
+- Main Library installation:
   ```bash
    pip install AbstractIntegratedModule
    python -m install AbstractIntegratedModule
    ```
+
+- Library installation if you dont have aarch64 setup, you can download the correct wheel for your setup in this repository or by using pip:
+  - ✨ use pip for downloading the correct wheels for your setup:
+  - ```
+    pip install abstractintegratedmodule --find-links https://github.com/Micro-Novelty/abstract-modules/releases  --break-system-packages
+    ```
+    
 - Github Link (for Visiting and cloning the Main Repo)
 - https://github.com/Micro-Novelty/IntegratedPipeline-Specialized-Non-LLM-AI-Agent-Framework
 
