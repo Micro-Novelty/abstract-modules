@@ -274,7 +274,7 @@ jobs:
           echo "Linux/musl jobs: $LINUX"
           echo "macOS jobs:      $MACOS"
           if [[ "$LINUX" != "success" || "$MACOS" != "success" ]]; then
-            echo "❌ One or more wheel tests FAILED."
+            echo "❌ One or more wheel tests have FAILED."
             exit 1
           fi
-          echo "✅ All wheel tests has passed."
+          echo "✅ All wheel tests have passed."
