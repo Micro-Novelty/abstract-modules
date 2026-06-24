@@ -118,7 +118,7 @@ jobs:
 
             # Download wheel into workspace
             curl -fsSL -o "$FILENAME" "$URL"
-            echo "has Downloaded $(du -sh "$FILENAME" | cut -f1): $FILENAME"
+            echo "has now Downloaded $(du -sh "$FILENAME" | cut -f1): $FILENAME"
 
             # Run install + test inside container
             if docker run --rm --platform "$PLATFORM" \
