@@ -29,7 +29,6 @@ jobs:
           TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-          # Collect all .whl asset download URLs (up to 10)
           URLS=$(echo "$RELEASE_JSON" \
             | jq -c '[.assets[] | select(.name | endswith(".whl")) | .browser_download_url] | .[0:10]')
           echo "wheel_urls=$URLS" >> "$GITHUB_OUTPUT"
@@ -37,11 +36,7 @@ jobs:
           echo "$URLS" | jq -r '.[]'
 
   # ─────────────────────────────────────────────────
-  # Step 2: Matrix test across every combination of
-  # runner OS × Python version × wheel.
-  # Platform compatibility is checked at runtime via
-  # an `if:` guard on each step (matrix context is
-  # NOT available inside `exclude:` blocks).
+  # Step 2: Matrix test
   # ─────────────────────────────────────────────────
   test-wheels:
     name: "[${{ matrix.python-version }}] ${{ matrix.os }}"
@@ -53,13 +48,11 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
         os:
-          - ubuntu-latest        # manylinux  x86_64
-          - ubuntu-24.04-arm     # manylinux  aarch64
-          - macos-13             # macOS      x86_64
-          - macos-latest         # macOS      arm64
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-13
+          - macos-latest
         wheel_url: ${{ fromJson(needs.get-release.outputs.wheel_urls) }}
-        # NOTE: No `exclude:` here — filtering is done at runtime below
-        #       because `matrix` context is unavailable in exclude blocks.
 
     runs-on: ${{ matrix.os }}
 
@@ -67,28 +60,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Detect what kind of wheel this is ──────────────────────────────
+      # ── Classify wheel vs runner compatibility ──────────────────────────
       - name: Classify wheel and runner
         id: classify
         shell: bash
         run: |
-          WHEEL="${{ matrix.wheel_url }}"
+          WHEEL_URL="${{ matrix.wheel_url }}"
           OS="${{ matrix.os }}"
 
-          # Wheel platform flags
+          # Extract the original filename from the URL
+          WHEEL_FILENAME="${WHEEL_URL##*/}"
+          echo "wheel_filename=$WHEEL_FILENAME" >> "$GITHUB_OUTPUT"
+          echo "Wheel filename: $WHEEL_FILENAME"
+
           IS_MUSL=false
           IS_LINUX=false
           IS_MACOS=false
           IS_AARCH64=false
           IS_X86_64=false
 
-          [[ "$WHEEL" == *"musllinux"*                        ]] && IS_MUSL=true
-          [[ "$WHEEL" == *"manylinux"* || "$WHEEL" == *"linux"* ]] && IS_LINUX=true
-          [[ "$WHEEL" == *"macosx"*                           ]] && IS_MACOS=true
-          [[ "$WHEEL" == *"aarch64"*                          ]] && IS_AARCH64=true
-          [[ "$WHEEL" == *"x86_64"*                           ]] && IS_X86_64=true
+          [[ "$WHEEL_FILENAME" == *"musllinux"*   ]] && IS_MUSL=true
+          [[ "$WHEEL_FILENAME" == *"manylinux"*   ]] && IS_LINUX=true
+          [[ "$WHEEL_FILENAME" == *"linux"*        ]] && IS_LINUX=true
+          [[ "$WHEEL_FILENAME" == *"macosx"*       ]] && IS_MACOS=true
+          [[ "$WHEEL_FILENAME" == *"aarch64"*      ]] && IS_AARCH64=true
+          [[ "$WHEEL_FILENAME" == *"x86_64"*       ]] && IS_X86_64=true
 
-          # Runner arch flags
           RUNNER_ARM=false
           RUNNER_X86=false
           RUNNER_MAC=false
@@ -96,21 +93,19 @@ jobs:
           [[ "$OS" == "ubuntu-latest"    || "$OS" == "macos-13"     ]] && RUNNER_X86=true
           [[ "$OS" == macos-*                                        ]] && RUNNER_MAC=true
 
-          # Compatibility check: skip if wheel arch != runner arch,
-          # or if wheel OS != runner OS family.
           SKIP=false
-          $IS_MACOS  && ! $RUNNER_MAC  && SKIP=true   # macOS wheel on Linux runner
-          ! $IS_MACOS && $RUNNER_MAC   && SKIP=true   # Linux wheel on macOS runner
-          $IS_AARCH64 && $RUNNER_X86   && SKIP=true   # aarch64 wheel on x86_64 runner
-          $IS_X86_64  && $RUNNER_ARM   && SKIP=true   # x86_64  wheel on aarch64 runner
+          $IS_MACOS   && ! $RUNNER_MAC && SKIP=true
+          ! $IS_MACOS && $RUNNER_MAC   && SKIP=true
+          $IS_AARCH64 && $RUNNER_X86   && SKIP=true
+          $IS_X86_64  && $RUNNER_ARM   && SKIP=true
 
-          echo "skip=$SKIP"         >> "$GITHUB_OUTPUT"
-          echo "is_musl=$IS_MUSL"   >> "$GITHUB_OUTPUT"
+          echo "skip=$SKIP"       >> "$GITHUB_OUTPUT"
+          echo "is_musl=$IS_MUSL" >> "$GITHUB_OUTPUT"
 
           if $SKIP; then
-            echo "⏭ Skipping incompatible wheel/runner combination."
+            echo "⏭ Skipping incompatible combination: $WHEEL_FILENAME on $OS"
           else
-            echo "✅ Wheel is compatible with this runner."
+            echo "✅ Compatible: $WHEEL_FILENAME on $OS"
           fi
 
       # ── Standard (non-musl) path ────────────────────────────────────────
@@ -123,17 +118,24 @@ jobs:
       - name: Download wheel (standard)
         if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
         shell: bash
-        run: curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
+        run: |
+          # Use the real filename so pip sees a valid wheel filename
+          WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
+          curl -fsSL -o "$WHEEL_FILENAME" "${{ matrix.wheel_url }}"
+          echo "Downloaded: $WHEEL_FILENAME"
+          ls -lh "$WHEEL_FILENAME"
 
       - name: Install & test wheel (standard)
         if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
         shell: bash
         run: |
+          WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
           python -m pip install --upgrade pip
-          pip install wheel.whl
+          # Use ./ prefix so pip treats it as a local path, not a package name
+          pip install "./$WHEEL_FILENAME"
           python abstract_test.py
 
-      # ── musllinux path — run inside Alpine container ────────────────────
+      # ── musllinux path — Alpine container ──────────────────────────────
       - name: Install & test wheel (musllinux / Alpine)
         if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'true'
         uses: addnab/docker-run-action@v3
@@ -149,14 +151,16 @@ jobs:
             set -e
             apk add --no-cache curl
             cd /workspace
-            curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
+            WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
+            curl -fsSL -o "$WHEEL_FILENAME" "${{ matrix.wheel_url }}"
+            echo "Downloaded: $WHEEL_FILENAME"
             pip install --upgrade pip
-            pip install wheel.whl
+            # Use ./ prefix so pip treats it as a local path, not a package name
+            pip install "./$WHEEL_FILENAME"
             python abstract_test.py
 
   # ─────────────────────────────────────────────────
-  # Step 3: Gate — fails the whole CI if any matrix
-  # leg returned a non-success result.
+  # Step 3: Gate
   # ─────────────────────────────────────────────────
   all-passed:
     name: All wheel tests passed
