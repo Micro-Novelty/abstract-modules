@@ -125,7 +125,7 @@ jobs:
               -v "$PWD:/workspace" -w /workspace \
               "$IMAGE" \
               sh -c "${INSTALL_EXTRA}${PYBIN} -m pip install --upgrade pip --quiet && ${PYBIN} -m pip install ./${FILENAME} && ${PYBIN} -m pip install ${TEST_DEPS} --quiet && ${PYBIN} abstract_test.py"; then
-              echo "✅ PASSED: $FILENAME"
+              echo "✅ HAS PASSED: $FILENAME"
               TESTED=$((TESTED + 1))
             else
               echo "❌ FAILED: $FILENAME"
