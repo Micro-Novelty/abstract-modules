@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 print(f'FILE: {AbstractIntegratedModule.__file__}')
 memory_name = 'agent_memory'
 main_model = IntegratedPipeline(memory_name=memory_name, use_async=True, agent_port=8080,ssl_cert_file=None, ssl_key_file=None) # provide cert_file path or key_file path (optional)
-main_prediction = PipelinePredictionManager(main_model, label_csv='c:/users/dell/downloads/ManualsTraining.txt', target_title='window_title', label='label')
+main_prediction = PipelinePredictionManager(main_model, label_csv='root/ManualsTraining.txt', target_title='window_title', label='label')
 # example_manual_training is a .txt file that contain csv format like above example.
 
 example_rules = [
@@ -78,7 +78,7 @@ def test_sets(type=None):
 
 X, y = test_sets()
             
-titles, _, label_map = main_prediction.load_labels_from_csv('C:/users/dell/downloads/ManualsTraining.txt', 'window_title', 'label')
+titles, _, label_map = main_prediction.load_labels_from_csv('root/ManualsTraining.txt', 'window_title', 'label')
 # small training with simple titles
 main_model.train(titles, y)
 
