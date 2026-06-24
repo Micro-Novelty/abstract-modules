@@ -10,8 +10,7 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────
-  # Step 1: Fetch the latest release assets once,
-  # then fan-out to the matrix jobs below.
+  # Step 1: Fetch the latest release assets once
   # ─────────────────────────────────────────────────
   get-release:
     name: Fetch Latest Release Metadata
@@ -36,114 +35,121 @@ jobs:
           echo "$URLS" | jq -r '.[]'
 
   # ─────────────────────────────────────────────────
-  # Step 2: Matrix test
+  # Step 2: Matrix — one job per wheel file.
+  # The runner and Python version are derived from
+  # the wheel filename itself, not from a fixed matrix.
   # ─────────────────────────────────────────────────
   test-wheels:
-    name: "[${{ matrix.python-version }}] ${{ matrix.os }}"
+    name: "Test wheel ${{ matrix.wheel_url }}"
     needs: get-release
     if: ${{ needs.get-release.outputs.wheel_urls != '[]' }}
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-        os:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-          - macos-13
-          - macos-latest
         wheel_url: ${{ fromJson(needs.get-release.outputs.wheel_urls) }}
 
-    runs-on: ${{ matrix.os }}
+    # Use ubuntu-latest as the bootstrap runner — we'll pick the real
+    # runner dynamically via a follow-up job trick, or handle dispatch below.
+    runs-on: ubuntu-latest
+
+    outputs:
+      # propagate for debugging
+      wheel_url: ${{ matrix.wheel_url }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Classify wheel vs runner compatibility ──────────────────────────
-      - name: Classify wheel and runner
-        id: classify
+      # Decode the wheel filename into runner + python version + musl flag
+      - name: Decode wheel metadata
+        id: meta
         shell: bash
         run: |
-          WHEEL_URL="${{ matrix.wheel_url }}"
-          OS="${{ matrix.os }}"
+          URL="${{ matrix.wheel_url }}"
+          FILENAME="${URL##*/}"
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
+          echo "Wheel: $FILENAME"
 
-          # Extract the original filename from the URL
-          WHEEL_FILENAME="${WHEEL_URL##*/}"
-          echo "wheel_filename=$WHEEL_FILENAME" >> "$GITHUB_OUTPUT"
-          echo "Wheel filename: $WHEEL_FILENAME"
+          # ── Python version ──────────────────────────────────────────────
+          # cp310 → 3.10, cp311 → 3.11, cp312 → 3.12
+          PY_TAG=$(echo "$FILENAME" | grep -oP 'cp3\d+' | head -1)
+          case "$PY_TAG" in
+            cp310) PY_VERSION="3.10" ;;
+            cp311) PY_VERSION="3.11" ;;
+            cp312) PY_VERSION="3.12" ;;
+            *)     PY_VERSION=""     ;;
+          esac
+          echo "py_version=$PY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Python version: $PY_VERSION"
 
-          IS_MUSL=false
-          IS_LINUX=false
-          IS_MACOS=false
-          IS_AARCH64=false
-          IS_X86_64=false
+          # ── Platform flags ──────────────────────────────────────────────
+          IS_MUSL=false;  IS_MACOS=false
+          IS_AARCH64=false; IS_X86_64=false
 
-          [[ "$WHEEL_FILENAME" == *"musllinux"*   ]] && IS_MUSL=true
-          [[ "$WHEEL_FILENAME" == *"manylinux"*   ]] && IS_LINUX=true
-          [[ "$WHEEL_FILENAME" == *"linux"*        ]] && IS_LINUX=true
-          [[ "$WHEEL_FILENAME" == *"macosx"*       ]] && IS_MACOS=true
-          [[ "$WHEEL_FILENAME" == *"aarch64"*      ]] && IS_AARCH64=true
-          [[ "$WHEEL_FILENAME" == *"x86_64"*       ]] && IS_X86_64=true
+          [[ "$FILENAME" == *"musllinux"* ]] && IS_MUSL=true
+          [[ "$FILENAME" == *"macosx"*    ]] && IS_MACOS=true
+          [[ "$FILENAME" == *"aarch64"*   ]] && IS_AARCH64=true
+          [[ "$FILENAME" == *"x86_64"*    ]] && IS_X86_64=true
 
-          RUNNER_ARM=false
-          RUNNER_X86=false
-          RUNNER_MAC=false
-          [[ "$OS" == "ubuntu-24.04-arm" || "$OS" == "macos-latest" ]] && RUNNER_ARM=true
-          [[ "$OS" == "ubuntu-latest"    || "$OS" == "macos-13"     ]] && RUNNER_X86=true
-          [[ "$OS" == macos-*                                        ]] && RUNNER_MAC=true
+          echo "is_musl=$IS_MUSL"       >> "$GITHUB_OUTPUT"
+          echo "is_macos=$IS_MACOS"     >> "$GITHUB_OUTPUT"
+          echo "is_aarch64=$IS_AARCH64" >> "$GITHUB_OUTPUT"
+          echo "is_x86_64=$IS_X86_64"   >> "$GITHUB_OUTPUT"
 
-          SKIP=false
-          $IS_MACOS   && ! $RUNNER_MAC && SKIP=true
-          ! $IS_MACOS && $RUNNER_MAC   && SKIP=true
-          $IS_AARCH64 && $RUNNER_X86   && SKIP=true
-          $IS_X86_64  && $RUNNER_ARM   && SKIP=true
-
-          echo "skip=$SKIP"       >> "$GITHUB_OUTPUT"
-          echo "is_musl=$IS_MUSL" >> "$GITHUB_OUTPUT"
-
-          if $SKIP; then
-            echo "⏭ Skipping incompatible combination: $WHEEL_FILENAME on $OS"
-          else
-            echo "✅ Compatible: $WHEEL_FILENAME on $OS"
+          # Validate we recognised the wheel
+          if [[ -z "$PY_VERSION" ]]; then
+            echo "❌ Could not determine Python version from filename: $FILENAME"
+            exit 1
           fi
 
-      # ── Standard (non-musl) path ────────────────────────────────────────
-      - name: Set up Python ${{ matrix.python-version }}
-        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
-        uses: actions/setup-python@v5
+      # ── Download wheel (always on the bootstrap ubuntu runner) ──────────
+      - name: Download wheel
+        shell: bash
+        run: |
+          FILENAME="${{ steps.meta.outputs.filename }}"
+          curl -fsSL -o "$FILENAME" "${{ matrix.wheel_url }}"
+          echo "Downloaded $(du -sh $FILENAME | cut -f1): $FILENAME"
+
+      # ══════════════════════════════════════════════════════════════════════
+      # manylinux x86_64
+      # ══════════════════════════════════════════════════════════════════════
+      - name: "[manylinux x86_64] Install & test"
+        if: steps.meta.outputs.is_macos == 'false' && steps.meta.outputs.is_musl == 'false' && steps.meta.outputs.is_aarch64 == 'false' && steps.meta.outputs.is_x86_64 == 'true'
+        uses: addnab/docker-run-action@v3
         with:
-          python-version: ${{ matrix.python-version }}
+          # Use the manylinux image that matches the wheel's glibc requirement
+          image: "quay.io/pypa/manylinux_2_28_x86_64"
+          options: -v ${{ github.workspace }}:/workspace
+          run: |
+            set -e
+            cd /workspace
+            FILENAME="${{ steps.meta.outputs.filename }}"
+            PY_VERSION="${{ steps.meta.outputs.py_version }}"
+            # Pick the matching Python binary inside the manylinux image
+            PYBIN=$(ls /opt/python/cp${PY_VERSION//./}-*/bin/python3 2>/dev/null | head -1)
+            if [[ -z "$PYBIN" ]]; then
+              # Fallback: match by major.minor
+              PYBIN=$(ls /opt/python/*/bin/python3 2>/dev/null \
+                | xargs -I{} sh -c '{} --version 2>&1 | grep -q "Python $PY_VERSION" && echo {}' \
+                | head -1)
+            fi
+            echo "Using Python binary: $PYBIN ($($PYBIN --version))"
+            $PYBIN -m pip install --upgrade pip
+            $PYBIN -m pip install "./$FILENAME"
+            $PYBIN abstract_test.py
 
-      - name: Download wheel (standard)
-        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
-        shell: bash
-        run: |
-          # Use the real filename so pip sees a valid wheel filename
-          WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
-          curl -fsSL -o "$WHEEL_FILENAME" "${{ matrix.wheel_url }}"
-          echo "Downloaded: $WHEEL_FILENAME"
-          ls -lh "$WHEEL_FILENAME"
-
-      - name: Install & test wheel (standard)
-        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
-        shell: bash
-        run: |
-          WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
-          python -m pip install --upgrade pip
-          # Use ./ prefix so pip treats it as a local path, not a package name
-          pip install "./$WHEEL_FILENAME"
-          python abstract_test.py
-
-      # ── musllinux path — Alpine container ──────────────────────────────
-      - name: Install & test wheel (musllinux / Alpine)
-        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'true'
+      # ══════════════════════════════════════════════════════════════════════
+      # musllinux x86_64
+      # ══════════════════════════════════════════════════════════════════════
+      - name: "[musllinux x86_64] Install & test"
+        if: steps.meta.outputs.is_macos == 'false' && steps.meta.outputs.is_musl == 'true' && steps.meta.outputs.is_aarch64 == 'false'
         uses: addnab/docker-run-action@v3
         with:
           image: >-
             ${{
-              matrix.python-version == '3.10' && 'python:3.10-alpine' ||
-              matrix.python-version == '3.11' && 'python:3.11-alpine' ||
+              steps.meta.outputs.py_version == '3.10' && 'python:3.10-alpine' ||
+              steps.meta.outputs.py_version == '3.11' && 'python:3.11-alpine' ||
               'python:3.12-alpine'
             }}
           options: -v ${{ github.workspace }}:/workspace
@@ -151,26 +157,166 @@ jobs:
             set -e
             apk add --no-cache curl
             cd /workspace
-            WHEEL_FILENAME="${{ steps.classify.outputs.wheel_filename }}"
-            curl -fsSL -o "$WHEEL_FILENAME" "${{ matrix.wheel_url }}"
-            echo "Downloaded: $WHEEL_FILENAME"
+            FILENAME="${{ steps.meta.outputs.filename }}"
             pip install --upgrade pip
-            # Use ./ prefix so pip treats it as a local path, not a package name
-            pip install "./$WHEEL_FILENAME"
+            pip install "./$FILENAME"
             python abstract_test.py
 
+      # ══════════════════════════════════════════════════════════════════════
+      # manylinux aarch64
+      # ══════════════════════════════════════════════════════════════════════
+      - name: "[manylinux aarch64] Install & test"
+        if: steps.meta.outputs.is_macos == 'false' && steps.meta.outputs.is_musl == 'false' && steps.meta.outputs.is_aarch64 == 'true'
+        uses: addnab/docker-run-action@v3
+        with:
+          image: "quay.io/pypa/manylinux_2_28_aarch64"
+          options: --platform linux/arm64 -v ${{ github.workspace }}:/workspace
+          run: |
+            set -e
+            cd /workspace
+            FILENAME="${{ steps.meta.outputs.filename }}"
+            PY_VERSION="${{ steps.meta.outputs.py_version }}"
+            PYBIN=$(ls /opt/python/cp${PY_VERSION//./}-*/bin/python3 2>/dev/null | head -1)
+            echo "Using Python binary: $PYBIN ($($PYBIN --version))"
+            $PYBIN -m pip install --upgrade pip
+            $PYBIN -m pip install "./$FILENAME"
+            $PYBIN abstract_test.py
+
+      # ══════════════════════════════════════════════════════════════════════
+      # musllinux aarch64
+      # ══════════════════════════════════════════════════════════════════════
+      - name: "[musllinux aarch64] Install & test"
+        if: steps.meta.outputs.is_macos == 'false' && steps.meta.outputs.is_musl == 'true' && steps.meta.outputs.is_aarch64 == 'true'
+        uses: addnab/docker-run-action@v3
+        with:
+          image: >-
+            ${{
+              steps.meta.outputs.py_version == '3.10' && 'python:3.10-alpine' ||
+              steps.meta.outputs.py_version == '3.11' && 'python:3.11-alpine' ||
+              'python:3.12-alpine'
+            }}
+          options: --platform linux/arm64 -v ${{ github.workspace }}:/workspace
+          run: |
+            set -e
+            apk add --no-cache curl
+            cd /workspace
+            FILENAME="${{ steps.meta.outputs.filename }}"
+            pip install --upgrade pip
+            pip install "./$FILENAME"
+            python abstract_test.py
+
+      # ══════════════════════════════════════════════════════════════════════
+      # macOS x86_64 — must use a macOS runner (no Docker)
+      # ══════════════════════════════════════════════════════════════════════
+      - name: "[macOS x86_64] Install & test"
+        if: steps.meta.outputs.is_macos == 'true' && steps.meta.outputs.is_x86_64 == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed(
+              'macOS x86_64 wheels must be tested on a macos-13 runner. ' +
+              'Please re-run this job on macos-13 or add a separate matrix leg for macOS.'
+            )
+
+      - name: "[macOS arm64] Install & test"
+        if: steps.meta.outputs.is_macos == 'true' && steps.meta.outputs.is_aarch64 == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed(
+              'macOS arm64 wheels must be tested on a macos-latest runner. ' +
+              'Please re-run this job on macos-latest or add a separate matrix leg for macOS.'
+            )
+
   # ─────────────────────────────────────────────────
-  # Step 3: Gate
+  # macOS wheels need native runners — separate job
+  # ─────────────────────────────────────────────────
+  test-macos:
+    name: "Test macOS wheels"
+    needs: get-release
+    if: ${{ needs.get-release.outputs.wheel_urls != '[]' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13        # x86_64
+            arch: x86_64
+          - os: macos-latest    # arm64
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test matching macOS wheels
+        shell: bash
+        env:
+          WHEEL_URLS: ${{ needs.get-release.outputs.wheel_urls }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -e
+          ARCH_TAG="$ARCH"
+          # macOS arm64 uses 'arm64' in wheel filenames
+          FAILED=0
+          TESTED=0
+
+          for URL in $(echo "$WHEEL_URLS" | jq -r '.[]'); do
+            FILENAME="${URL##*/}"
+
+            # Only process macOS wheels for this runner's arch
+            [[ "$FILENAME" != *"macosx"*    ]] && continue
+            [[ "$FILENAME" != *"$ARCH_TAG"* ]] && continue
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Testing: $FILENAME"
+
+            # Derive Python version from wheel tag (cp310 → 3.10)
+            PY_TAG=$(echo "$FILENAME" | grep -oE 'cp3[0-9]+' | head -1)
+            PY_VERSION="${PY_TAG/cp/}"
+            PY_VERSION="${PY_VERSION:0:1}.${PY_VERSION:1}"
+            echo "Python: $PY_VERSION"
+
+            # Install the right Python via pyenv or system
+            if ! command -v "python$PY_VERSION" &>/dev/null; then
+              brew install "python@$PY_VERSION" || true
+            fi
+            PYBIN="python$PY_VERSION"
+
+            curl -fsSL -o "$FILENAME" "$URL"
+            $PYBIN -m pip install --upgrade pip
+            $PYBIN -m pip install "./$FILENAME"
+            if $PYBIN abstract_test.py; then
+              echo "✅ PASSED: $FILENAME"
+              TESTED=$((TESTED + 1))
+            else
+              echo "❌ FAILED: $FILENAME"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Tested: $TESTED wheel(s), Failed: $FAILED"
+          [[ $FAILED -eq 0 ]]
+
+  # ─────────────────────────────────────────────────
+  # Gate
   # ─────────────────────────────────────────────────
   all-passed:
     name: All wheel tests passed
-    needs: test-wheels
+    needs: [test-wheels, test-macos]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check matrix result
+      - name: Check results
         run: |
-          if [[ "${{ needs.test-wheels.result }}" != "success" ]]; then
+          LINUX="${{ needs.test-wheels.result }}"
+          MACOS="${{ needs.test-macos.result }}"
+          echo "Linux/musl jobs: $LINUX"
+          echo "macOS jobs:      $MACOS"
+          if [[ "$LINUX" != "success" || "$MACOS" != "success" ]]; then
             echo "❌ One or more wheel tests FAILED."
             exit 1
           fi
