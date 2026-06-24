@@ -38,96 +38,106 @@ jobs:
 
   # ─────────────────────────────────────────────────
   # Step 2: Matrix test across every combination of
-  # runner OS × Python version × wheel
+  # runner OS × Python version × wheel.
+  # Platform compatibility is checked at runtime via
+  # an `if:` guard on each step (matrix context is
+  # NOT available inside `exclude:` blocks).
   # ─────────────────────────────────────────────────
   test-wheels:
-    name: "Test [${{ matrix.python-version }}] ${{ matrix.os }} — ${{ matrix.wheel_url }}"
+    name: "[${{ matrix.python-version }}] ${{ matrix.os }}"
     needs: get-release
-    # Only run when there is at least one wheel
     if: ${{ needs.get-release.outputs.wheel_urls != '[]' }}
 
     strategy:
-      fail-fast: false          # run all combos even if one fails
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
         os:
-          - ubuntu-latest       # manylinux x86_64 (native)
-          - ubuntu-24.04-arm    # manylinux aarch64 (native GitHub-hosted runner)
-          - macos-13            # macOS x86_64
-          - macos-latest        # macOS arm64 (M-series)
+          - ubuntu-latest        # manylinux  x86_64
+          - ubuntu-24.04-arm     # manylinux  aarch64
+          - macos-13             # macOS      x86_64
+          - macos-latest         # macOS      arm64
         wheel_url: ${{ fromJson(needs.get-release.outputs.wheel_urls) }}
-
-        # ── platform-specific filtering ──────────────────────────────────
-        # Each wheel filename encodes its platform tag. We skip wheels that
-        # cannot possibly install on the current runner so the job doesn't
-        # waste time attempting an incompatible install.
-        exclude:
-          # Skip aarch64 wheels on x86_64 runners and vice-versa
-          - os: ubuntu-latest
-            wheel_url: ${{ contains(matrix.wheel_url, 'aarch64') }}
-          - os: ubuntu-24.04-arm
-            wheel_url: ${{ contains(matrix.wheel_url, 'x86_64') }}
-          # Skip Linux wheels on macOS and macOS wheels on Linux
-          - os: macos-13
-            wheel_url: ${{ contains(matrix.wheel_url, 'linux') || contains(matrix.wheel_url, 'musllinux') || contains(matrix.wheel_url, 'manylinux') }}
-          - os: macos-latest
-            wheel_url: ${{ contains(matrix.wheel_url, 'linux') || contains(matrix.wheel_url, 'musllinux') || contains(matrix.wheel_url, 'manylinux') }}
-          - os: ubuntu-latest
-            wheel_url: ${{ contains(matrix.wheel_url, 'macosx') }}
-          - os: ubuntu-24.04-arm
-            wheel_url: ${{ contains(matrix.wheel_url, 'macosx') }}
+        # NOTE: No `exclude:` here — filtering is done at runtime below
+        #       because `matrix` context is unavailable in exclude blocks.
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      # ── musllinux wheels need an Alpine container ───────────────────────
-      # We detect this in a setup step and run the real test inside Docker
-      # when needed; otherwise we run directly on the host.
-      - name: Detect musllinux wheel
-        id: detect
-        shell: bash
-        run: |
-          if [[ "${{ matrix.wheel_url }}" == *"musllinux"* ]]; then
-            echo "musl=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "musl=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ── Checkout repo to get abstract_test.py ──────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── Detect what kind of wheel this is ──────────────────────────────
+      - name: Classify wheel and runner
+        id: classify
+        shell: bash
+        run: |
+          WHEEL="${{ matrix.wheel_url }}"
+          OS="${{ matrix.os }}"
+
+          # Wheel platform flags
+          IS_MUSL=false
+          IS_LINUX=false
+          IS_MACOS=false
+          IS_AARCH64=false
+          IS_X86_64=false
+
+          [[ "$WHEEL" == *"musllinux"*                        ]] && IS_MUSL=true
+          [[ "$WHEEL" == *"manylinux"* || "$WHEEL" == *"linux"* ]] && IS_LINUX=true
+          [[ "$WHEEL" == *"macosx"*                           ]] && IS_MACOS=true
+          [[ "$WHEEL" == *"aarch64"*                          ]] && IS_AARCH64=true
+          [[ "$WHEEL" == *"x86_64"*                           ]] && IS_X86_64=true
+
+          # Runner arch flags
+          RUNNER_ARM=false
+          RUNNER_X86=false
+          RUNNER_MAC=false
+          [[ "$OS" == "ubuntu-24.04-arm" || "$OS" == "macos-latest" ]] && RUNNER_ARM=true
+          [[ "$OS" == "ubuntu-latest"    || "$OS" == "macos-13"     ]] && RUNNER_X86=true
+          [[ "$OS" == macos-*                                        ]] && RUNNER_MAC=true
+
+          # Compatibility check: skip if wheel arch != runner arch,
+          # or if wheel OS != runner OS family.
+          SKIP=false
+          $IS_MACOS  && ! $RUNNER_MAC  && SKIP=true   # macOS wheel on Linux runner
+          ! $IS_MACOS && $RUNNER_MAC   && SKIP=true   # Linux wheel on macOS runner
+          $IS_AARCH64 && $RUNNER_X86   && SKIP=true   # aarch64 wheel on x86_64 runner
+          $IS_X86_64  && $RUNNER_ARM   && SKIP=true   # x86_64  wheel on aarch64 runner
+
+          echo "skip=$SKIP"         >> "$GITHUB_OUTPUT"
+          echo "is_musl=$IS_MUSL"   >> "$GITHUB_OUTPUT"
+
+          if $SKIP; then
+            echo "⏭ Skipping incompatible wheel/runner combination."
+          else
+            echo "✅ Wheel is compatible with this runner."
+          fi
+
       # ── Standard (non-musl) path ────────────────────────────────────────
       - name: Set up Python ${{ matrix.python-version }}
-        if: steps.detect.outputs.musl == 'false'
+        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Download wheel
-        if: steps.detect.outputs.musl == 'false'
+      - name: Download wheel (standard)
+        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
         shell: bash
-        run: |
-          curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
+        run: curl -fsSL -o wheel.whl "${{ matrix.wheel_url }}"
 
-      - name: Install wheel
-        if: steps.detect.outputs.musl == 'false'
+      - name: Install & test wheel (standard)
+        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'false'
         shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install wheel.whl
-
-      - name: Run abstract_test.py
-        if: steps.detect.outputs.musl == 'false'
-        shell: bash
-        run: python abstract_test.py
+          python abstract_test.py
 
       # ── musllinux path — run inside Alpine container ────────────────────
-      - name: Run musllinux test in Alpine container
-        if: steps.detect.outputs.musl == 'true'
+      - name: Install & test wheel (musllinux / Alpine)
+        if: steps.classify.outputs.skip == 'false' && steps.classify.outputs.is_musl == 'true'
         uses: addnab/docker-run-action@v3
         with:
-          # Map Python version to the matching Alpine image
           image: >-
             ${{
               matrix.python-version == '3.10' && 'python:3.10-alpine' ||
@@ -145,8 +155,8 @@ jobs:
             python abstract_test.py
 
   # ─────────────────────────────────────────────────
-  # Step 3: Gate job — the overall CI is green only
-  # when every matrix job passed.
+  # Step 3: Gate — fails the whole CI if any matrix
+  # leg returned a non-success result.
   # ─────────────────────────────────────────────────
   all-passed:
     name: All wheel tests passed
@@ -157,7 +167,7 @@ jobs:
       - name: Check matrix result
         run: |
           if [[ "${{ needs.test-wheels.result }}" != "success" ]]; then
-            echo "One or more wheel tests FAILED."
+            echo "❌ One or more wheel tests FAILED."
             exit 1
           fi
-          echo "All wheel tests passed successfully."
+          echo "✅ All wheel tests passed."
