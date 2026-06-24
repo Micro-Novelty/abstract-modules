@@ -9,7 +9,7 @@ from AbstractIntegratedModule import (
 
 SECRET_KEY = "test-secret-key"
 
-LABEL_FILE = "root/AbstractIntegratedModule/ManualsTraining.txt"
+LABEL_FILE = "ManualsTraining.txt"
 PEER_FILE = "peer_config.json"
 
 memory_name = "arm64_test"
