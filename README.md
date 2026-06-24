@@ -45,8 +45,8 @@ This repository also Contains Python Wheels for:
   - Robust Advanced prediction capabilities proven effective on ARM64 Using MLP + LSTM Architectures.
   - Transformer Optimized using Cython, to reduce Memory overhead and Reduce CPU Usage, With Reduced Training Time.
 - Changelog:
-    v0.7.6:
-    [=] New features:
+    - v0.7.6:
+    - [=] New features:
        - Adding Optimization and refinements for parsing JSON in Rust.
        - Ensure robustness in calculating Samples similarity to prevent misleading answers in different environment.
 
