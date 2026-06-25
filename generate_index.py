@@ -2,7 +2,7 @@ import json, os, urllib.request
 
 REPO = "Micro-Novelty/abstract-modules"
 PACKAGE = "abstractintegratedmodule"
-OUT_DIR = f"gh-pages/whl/{PACKAGE}"  # ← output directly into gh-pages folder
+OUT_DIR = f"gh-pages/whl/{PACKAGE}"
 
 # Fetch all releases from GitHub API
 url = f"https://api.github.com/repos/{REPO}/releases"
@@ -43,5 +43,9 @@ with open("gh-pages/whl/index.html", "w") as f:
     <a href="{PACKAGE}/">{PACKAGE}</a>
   </body>
 </html>""")
+
+# Disable Jekyll so GitHub Pages serves files as-is
+with open("gh-pages/.nojekyll", "w") as f:
+    f.write("")
 
 print(f"Generated index with {len(links)} wheels.")
