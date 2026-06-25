@@ -88,9 +88,20 @@ jobs:
               continue
             fi
 
-            # Only wheels matching this runner's arch
-            if [[ "$FILENAME" != *"$WHEEL_ARCH"* ]]; then
-              echo "⏭ Skipping wrong-arch wheel ($WHEEL_ARCH): $FILENAME"
+            # Only wheels matching this runner's arch.
+            # manylinux/musllinux wheels always use "aarch64" or "x86_64" —
+            # never "arm64" — but guard both just in case a build tool differs.
+            IS_ARM=false
+            IS_X86=false
+            [[ "$FILENAME" == *"aarch64"* || "$FILENAME" == *"arm64"* ]] && IS_ARM=true
+            [[ "$FILENAME" == *"x86_64"* || "$FILENAME" == *"amd64"* ]]  && IS_X86=true
+
+            if [[ "$WHEEL_ARCH" == "aarch64" && "$IS_ARM" != "true" ]]; then
+              echo "⏭ Skipping non-aarch64 wheel: $FILENAME"
+              continue
+            fi
+            if [[ "$WHEEL_ARCH" == "x86_64" && "$IS_X86" != "true" ]]; then
+              echo "⏭ Skipping non-x86_64 wheel: $FILENAME"
               continue
             fi
 
@@ -104,6 +115,15 @@ jobs:
             PY_VERSION="${PY_MINOR:0:1}.${PY_MINOR:1}"    # 3.10, 3.11, 3.12
             echo "Python version: $PY_VERSION"
 
+            # Pull the arch token directly from the filename so the Docker image
+            # tag matches exactly what the wheel was built for (aarch64/x86_64).
+            # manylinux image tags always use aarch64/x86_64, never arm64/amd64.
+            if [[ "$IS_ARM" == "true" ]]; then
+              IMG_ARCH="aarch64"
+            else
+              IMG_ARCH="x86_64"
+            fi
+
             # Choose Docker image based on musl vs manylinux
             if [[ "$FILENAME" == *"musllinux"* ]]; then
               IMAGE="python:${PY_VERSION}-alpine"
@@ -115,12 +135,7 @@ jobs:
               if [[ -z "$GLIBC" ]]; then
                 GLIBC="manylinux_2_28"  # fallback
               fi
-              # Image tag uses the arch from the wheel filename directly
-              if [[ "$WHEEL_ARCH" == "aarch64" ]]; then
-                IMAGE="quay.io/pypa/${GLIBC}_aarch64"
-              else
-                IMAGE="quay.io/pypa/${GLIBC}_x86_64"
-              fi
+              IMAGE="quay.io/pypa/${GLIBC}_${IMG_ARCH}"
               PYBIN="/opt/python/cp${PY_MINOR}-cp${PY_MINOR}/bin/python3"
               INSTALL_EXTRA=""
             fi
