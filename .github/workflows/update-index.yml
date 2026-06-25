@@ -29,4 +29,4 @@ jobs:
           git config user.email "actions@github.com"
           git add whl/ .nojekyll
           git diff --staged --quiet && echo "Nothing to commit" || git commit -m "Update pip index for ${{ github.ref_name }}"
-          git push HEAD:gh-pages
+          git push origin HEAD:gh-pages
