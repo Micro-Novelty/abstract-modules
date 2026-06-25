@@ -31,7 +31,7 @@ jobs:
           URLS=$(echo "$RELEASE_JSON" \
             | jq -c '[.assets[] | select(.name | endswith(".whl")) | .browser_download_url] | .[0:10]')
           echo "wheel_urls=$URLS" >> "$GITHUB_OUTPUT"
-          echo "Found wheels for $TAG:"
+          echo "has Found wheels for $TAG:"
           echo "$URLS" | jq -r '.[]'
 
   # ─────────────────────────────────────────────────
