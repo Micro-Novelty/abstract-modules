@@ -2,7 +2,7 @@ import json, os, urllib.request
 
 REPO = "Micro-Novelty/abstract-modules"
 PACKAGE = "abstractintegratedmodule"
-OUT_DIR = f"gh-pages/whl/{PACKAGE}"
+OUT_DIR = f"whl/{PACKAGE}"  # ← no gh-pages/ prefix
 
 # Fetch all releases from GitHub API
 url = f"https://api.github.com/repos/{REPO}/releases"
@@ -34,8 +34,8 @@ with open(f"{OUT_DIR}/index.html", "w") as f:
 </html>""")
 
 # Write root index
-os.makedirs("gh-pages/whl", exist_ok=True)
-with open("gh-pages/whl/index.html", "w") as f:
+os.makedirs("whl", exist_ok=True)
+with open("whl/index.html", "w") as f:
     f.write(f"""<!DOCTYPE html>
 <html>
   <head><title>Simple Index</title></head>
@@ -44,8 +44,8 @@ with open("gh-pages/whl/index.html", "w") as f:
   </body>
 </html>""")
 
-# Disable Jekyll so GitHub Pages serves files as-is
-with open("gh-pages/.nojekyll", "w") as f:
+# Disable Jekyll
+with open(".nojekyll", "w") as f:
     f.write("")
 
-print(f"has Generated index with {len(links)} wheels.")
+print(f"Generated index with {len(links)} wheels.")
