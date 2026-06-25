@@ -7,7 +7,7 @@ abstract-modules repository provides the New AbstractIntegratedModule wheels ded
 - And automatic CI that tests this wheels before being Deployed for multi-environments support.
    
 [=] Short Description of AbstractIntegratedModule library:
-- Development Stage on PyPi: 0.7.6 Official Release.
+- Development Stage on PyPi: Official Release.
 - Author and Maintainer: Micro-Novelty and EpsitronNet-bot.
 - library Source-Code is Open-sourced with MIT License.
 - Purpose: Specifically Designed for providing Non-LLM AI Agent Framework for edge Devices, Optimized for ARM64 architecture.
@@ -45,9 +45,5 @@ abstract-modules repository provides the New AbstractIntegratedModule wheels ded
   - LSTM is Optimized efficiently for scarce data with AWE method.
   - Robust Advanced prediction capabilities proven effective on ARM64 Using MLP + LSTM Architectures.
   - Transformer Optimized using Cython, to reduce Memory overhead and Reduce CPU Usage, With Reduced Training Time.
-- Changelog:
-    - v0.7.6:
-    - [=] New features:
-       - Adding Optimization and refinements for parsing JSON in Rust.
-       - Ensure robustness in calculating Samples similarity to prevent misleading answers in different environment.
+
 
