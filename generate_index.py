@@ -48,4 +48,4 @@ with open("whl/index.html", "w") as f:
 with open(".nojekyll", "w") as f:
     f.write("")
 
-print(f"Generated index with {len(links)} wheels.")
+print(f"Has Generated index with {len(links)} wheels.")
