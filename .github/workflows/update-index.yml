@@ -1,25 +1,33 @@
 name: Update pip index
-
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   update-index:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout gh-pages
+      - name: Checkout main (to get generate_index.py)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Checkout gh-pages into subfolder
         uses: actions/checkout@v4
         with:
           ref: gh-pages
+          path: gh-pages
 
-      - name: Regenerate index for html
+      - name: Regenerate index
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 generate_index.py
+          cp -r whl/ gh-pages/
 
       - name: Commit and push
+        working-directory: gh-pages
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
