@@ -13,7 +13,7 @@ jobs:
         with:
           ref: gh-pages
 
-      - name: Regenerate index
+      - name: Regenerate index for html
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
