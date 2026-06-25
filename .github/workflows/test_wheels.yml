@@ -180,7 +180,7 @@ jobs:
               echo "Installing python@$V..."
               brew install "python@$V" || true
             else
-              echo "python$V already available: $(python$V --version)"
+              echo "python$V now already available: $(python$V --version)"
             fi
           done
 
