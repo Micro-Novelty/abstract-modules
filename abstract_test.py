@@ -41,6 +41,7 @@ example_rules = [
 # activate explainability capability to explain uncertainty:
 main_model.show_explainability_details = False
 main_model.distribution.predict_manager = main_prediction
+main_model.autonomous = True
 
 # deprecate transformer use.
 main_model.use_transformer = False
