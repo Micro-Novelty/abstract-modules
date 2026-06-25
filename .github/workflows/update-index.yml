@@ -1,0 +1,28 @@
+name: Update pip index
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Regenerate index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 generate_index.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add whl/
+          git commit -m "Update pip index for ${{ github.ref_name }}"
+          git push
