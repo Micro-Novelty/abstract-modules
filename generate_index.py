@@ -2,7 +2,7 @@ import json, os, urllib.request
 
 REPO = "Micro-Novelty/abstract-modules"
 PACKAGE = "abstractintegratedmodule"
-OUT_DIR = f"whl/{PACKAGE}"
+OUT_DIR = f"gh-pages/whl/{PACKAGE}"  # ← output directly into gh-pages folder
 
 # Fetch all releases from GitHub API
 url = f"https://api.github.com/repos/{REPO}/releases"
@@ -34,7 +34,8 @@ with open(f"{OUT_DIR}/index.html", "w") as f:
 </html>""")
 
 # Write root index
-with open("whl/index.html", "w") as f:
+os.makedirs("gh-pages/whl", exist_ok=True)
+with open("gh-pages/whl/index.html", "w") as f:
     f.write(f"""<!DOCTYPE html>
 <html>
   <head><title>Simple Index</title></head>
