@@ -1,7 +1,7 @@
 name: Update pip index
 on:
   release:
-    types: [published] # publish
+    types: [published] # publish type
   workflow_dispatch:
   push:
     branches:
