@@ -1,4 +1,4 @@
-name: Update pip index
+name: Update pip index # indexing
 on:
   release:
     types: [published]
