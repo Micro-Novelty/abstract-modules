@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Regenerate index
+      - name: Regenerate index # regenerate to index.html
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
