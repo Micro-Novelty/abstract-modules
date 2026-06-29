@@ -14,7 +14,7 @@ jobs:
   update-index:
     runs-on: ubuntu-latest # lates ubuntu
     steps:
-      - name: Checkout
+      - name: Checkout #checkout
         uses: actions/checkout@v4
 
       - name: Regenerate index # regenerate to index.html
