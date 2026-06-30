@@ -1,4 +1,4 @@
-#[=]  Abstract-modules Wheels provider
+# [=] Abstract-modules Wheels provider
 [=] Introduction:
 abstract-modules repository provides the New AbstractIntegratedModule wheels dedicated for the latest version, supports multi-platform architecture, ranging from python version 3.10 -> 3.12.
 - This repository also Contains Python Wheels for:
