@@ -159,7 +159,7 @@ predicted_output = async_manager.advanced_batch_prediction(test_titles, label_ma
 # for better and faster advanced prediction, consider using advanced batch prediction like in the above example
 
 print('[+] Initiating samples prediction without titles and rules')
-results, chosen_label, confidence = main_prediction.advanced_prediction_method(test_titles=None, label_map=label_map, rules=None,
+results, chosen_label, confidence = main_prediction.advanced_prediction_method(titles=None, label_map=label_map, rules=None,
                              X=X, y=y,
                              show_proba=False, top_k=3, 
                              use_transformer=True,
