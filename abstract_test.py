@@ -158,6 +158,14 @@ print('[==] Initiating advanced batch prediction')
 predicted_output = async_manager.advanced_batch_prediction(test_titles, label_map, example_rules, api_key=secret_key, client_ip=None)
 # for better and faster advanced prediction, consider using advanced batch prediction like in the above example
 
+print('[+] Initiating samples prediction without titles and rules')
+results, chosen_label, confidence = main_prediction.advanced_prediction_method(test_titles=None, label_map=label_map, rules=None,
+                             X=X, y=y,
+                             show_proba=False, top_k=3, 
+                             use_transformer=True,
+                             return_attention=False,
+                             save_results=True,
+                             batch_size=2)
 
 # ... more features you can add
 
@@ -343,3 +351,5 @@ async def main(main_pipeline):
     await agent2.shutdown()
 
 asyncio.run(main(pipeline))
+
+
