@@ -116,7 +116,7 @@ from AbstractIntegratedModule import SecurityLevel
 
 print(" = TESTING ASYNCHRONOUS PREDICTION MANAGER = ")
 # Set discovery secret (in production, use environment variable)
-secret_key = 'my-ultra-safe-secret-key-for-authentication' # you can customize this key
+secret_key = 'my-ultra-safe-secret-key-for-authentication-here-with-nice-api-key-for-robustness-for-real-deployment-scenario' # you can customize this key
 
 
 security_config = SecurityConfig(
