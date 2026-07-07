@@ -170,7 +170,7 @@ results, chosen_label, confidence = main_prediction.advanced_prediction_method(t
 # ... more features you can add
 
 # ================ SECOND TEST ================
-SECRET_KEY = "test-secret-key"
+SECRET_KEY = "test-secret-key-here-for-robustness"
 
 LABEL_FILE = "ManualsTraining.txt"
 PEER_FILE = "peer_config.json"
