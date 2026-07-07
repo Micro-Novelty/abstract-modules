@@ -8,7 +8,7 @@ on:
       - gh-pages  # ← triggers when you push to gh-pages
 
 permissions:
-  contents: write # write contents in here
+  contents: write # write contents in here too
 
 jobs:
   update-index: #update
