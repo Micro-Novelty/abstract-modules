@@ -186,20 +186,11 @@ predict_manager = PipelinePredictionManager(
     label="label"
 )
 
-titles, _, label_map = predict_manager.load_labels_from_csv(
-    LABEL_FILE,
-    "window_title",
-    "label"
-)
-
-pipeline.train(titles, y)
 
 test_titles = [
     ("Programming in VSCode", "focused_work"),
     ("Watching YouTube", "entertainment")
 ]
-
-print('FILE:', AbstractIntegratedModule.__file__)
 
 
 async def main(main_pipeline, X, y):
