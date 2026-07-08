@@ -186,7 +186,7 @@ predict_manager = PipelinePredictionManager(
     label="label"
 )
 
-titles, y, label_map = predict_manager.load_labels_from_csv(
+titles, _, label_map = predict_manager.load_labels_from_csv(
     LABEL_FILE,
     "window_title",
     "label"
@@ -202,9 +202,8 @@ test_titles = [
 print('FILE:', AbstractIntegratedModule.__file__)
 
 
-async def main(main_pipeline):
+async def main(main_pipeline, X, y):
     sec_pipeline = IntegratedPipeline(memory_name=memory_name, use_async=True, agent_port=8010)
-
     rules = [
         # === WORK / PRODUCTIVITY ===
         (r'code|programming|develop|debug|compile|script', 'focused_work'),
@@ -270,6 +269,7 @@ async def main(main_pipeline):
         (r'medium-rare|steam|red_hat_enterprise_linux|play|windows', 'very rare'),
         (r'rarer|oracle|system|config|server_linux_router', 'absolute rare'),
     ]
+ 
 
     agent1 = CohesiveAgentDeployment(
         pipeline=main_pipeline,
@@ -318,6 +318,16 @@ async def main(main_pipeline):
         "agent_id": "arm64-demo"
     }
 
+    sec_texts = {
+        "test_titles": None,
+        "label_map": label_map,
+        "rules": None,
+        "X":X,
+        "y":y,
+        "use_transformer": False,
+        "agent_id": "arm64-demo"
+    }
+
     # agent1.pipeline.use_transformer = False
     # agent2.pipeline.use_transformer = False
 
@@ -333,7 +343,22 @@ async def main(main_pipeline):
         api_key=api_key,
         method="advanced",
         disable_sync=True
-    )    
+    ) 
+
+    print('[+] Initiating P2P without texts and rules, Only X and Y samples')
+    result3 = await agent1.multi_modal_peer_ensemble_prediction(
+        texts=sec_texts,
+        api_key=api_key,
+        method="advanced",
+        disable_sync=True
+    )
+
+    result4 = await agent2.multi_modal_peer_ensemble_prediction(
+        texts=sec_texts,
+        api_key=api_key,
+        method="advanced",
+        disable_sync=True
+    ) 
 
     print("\n=== RESULT ===")
     print(f"\n📊 Ensemble Result for Agent 1:")
@@ -343,6 +368,14 @@ async def main(main_pipeline):
     print('[=] For agent 2: ')
     print(f"   Second Prediction: {result2.get('prediction', 'N/A')}")
     print(f"   Second Confidence: {result2.get('confidence', 0):.2%}")
+
+    print('[=] For agent 3: ')
+    print(f"   Third Prediction: {result3.get('prediction', 'N/A')}")
+    print(f"   Third Confidence: {result3.get('confidence', 0):.2%}")
+
+    print('[=] For agent 4: ')
+    print(f"   Fourth Prediction: {result4.get('prediction', 'N/A')}")
+    print(f"   Fourth Confidence: {result4.get('confidence', 0):.2%}")
 
     agent1._peer_agent.stop_server()
     agent2._peer_agent.stop_server()
