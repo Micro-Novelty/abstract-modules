@@ -649,7 +649,7 @@ class TestAsyncMessageQueue:
                 q.publish(Message(id="mf", type="test", 
                                       sender="test_sender", recipient="test_recipient",
                                       payload=None, timestamp=time.time(),
-                                      priority=MessagePriority.NORMAL
+                                      priority=MessagePriority.NORMAL,
                                           timeout=15.0))
             )
             for i in range(200)
