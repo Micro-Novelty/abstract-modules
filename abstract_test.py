@@ -374,7 +374,7 @@ async def main(main_pipeline, X, y):
     await agent1.shutdown()
     await agent2.shutdown()
 
-asyncio.run(main(pipeline))
+asyncio.run(main(pipeline, X, y))
 
 """
 Adversarial concurrency test suite.
