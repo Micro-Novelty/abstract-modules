@@ -17,7 +17,7 @@ defaults:
 
 env:
   # Bump here to pick up the fix everywhere (linux + macOS)
-  TEST_DEPS: "scikit-learn aiohttp psutil pandas cryptography pytest"
+  TEST_DEPS: "scikit-learn aiohttp psutil pandas cryptography pytest pytest-asyncio"
 
 jobs:
   # ───────────────────────────────────────────────
