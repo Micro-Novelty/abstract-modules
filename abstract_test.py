@@ -595,6 +595,8 @@ class TestAsyncMessageQueue:
 
         messages = [
             Message(id=f"m-{seed}-{i}", type="test",
+                    sender="test_sender", recipient="test_recipient",
+                    payload=None, timestamp=time.time(),
                     priority=MessagePriority.NORMAL, timeout=10.0)
             for i in range(schedule.total_calls)
         ]
@@ -644,7 +646,11 @@ class TestAsyncMessageQueue:
 
         tasks = [
             asyncio.create_task(
-                q.publish(Message(id=f"mf-{i}", type="test", timeout=15.0))
+                q.publish(Message(id="mf", type="test", 
+                                      sender="test_sender", recipient="test_recipient",
+                                      payload=None, timestamp=time.time(),
+                                      priority=MessagePriority.NORMAL
+                                          timeout=15.0))
             )
             for i in range(200)
         ]
@@ -927,7 +933,10 @@ class TestThreadedMessageQueue:
         q.register_handler("test", lambda m: {"ok": True})
         q.start()
 
-        q.publish_async(Message(id="warm-up", type="test"))
+        q.publish_async(Message(id=f"fail", type="test", 
+                              sender="test_sender", recipient="test_recipient",
+                              payload=None, timestamp=time.time(),
+                              priority=MessagePriority.NORMAL, timeout=5.0))
         time.sleep(0.1)
 
         # this line alone would have failed the whole suite under the
@@ -951,7 +960,10 @@ class TestThreadedMessageQueue:
         q.start()
 
         with pytest.raises(Exception):
-            q.publish(Message(id=f"fail-{seed}", type="test", timeout=5.0))
+            q.publish(Message(id=f"fail-{seed}", type="test", 
+                              sender="test_sender", recipient="test_recipient",
+                              payload=None, timestamp=time.time(),
+                              priority=MessagePriority.NORMAL, timeout=5.0))
 
         q.stop(timeout=3.0)
 
@@ -976,7 +988,10 @@ class TestThreadedMessageQueue:
         def call(i):
             try:
                 results[i] = q.publish(
-                    Message(id=f"c-{seed}-{i}", type="test", timeout=10.0)
+                    Message(id=f"c-{seed}-{i}", type="test", 
+                              sender="test_sender", recipient="test_recipient",
+                              payload=None, timestamp=time.time(),
+                              priority=MessagePriority.NORMAL, timeout=10.0)
                 )
             except Exception as e:
                 errors[i] = e
