@@ -1,7 +1,7 @@
 # [=] Abstract-modules Wheels provider
 [=] Introduction:
-abstract-modules repository provides the New AbstractIntegratedModule wheels dedicated for the latest version, supports multi-platform architecture, ranging from python version 3.10 -> 3.12.
-- This repository also Contains Python Wheels for:
+abstract-modules repository provides the New AbstractIntegratedModule wheels download URL dedicated to allow Users to Download the latest version of the library, supports multi-platform architecture, ranging from python version 3.10 -> 3.12.
+- This repository also Provides Python Wheels for:
  - x86_64, aarch64 architecture (musllinux v1.2+ and manylinux v2.17+), supports python 3.10, 3.11, 3.12 only.
  - macOS (v10.9+) architecture, supports python 3.10, 3.11, 3.12 only.
 - And automatic CI that tests this wheels before being Deployed for multi-environments support.
