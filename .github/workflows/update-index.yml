@@ -11,7 +11,7 @@ permissions:
   contents: write # write contents in here too
 
 jobs:
-  update-index: #update
+  update-index: #update index 
     runs-on: ubuntu-latest # lates ubuntu
     steps:
       - name: Checkout #checkout
