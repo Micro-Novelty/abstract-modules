@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - gh-pages  # ← triggers when you push to gh-pages
+      - gh-pages  # ← triggers when you push to gh-pages here
 
 permissions:
   contents: write # write contents in here too
