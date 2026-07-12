@@ -646,7 +646,7 @@ class TestAsyncMessageQueue:
 
         tasks = [
             asyncio.create_task(
-                q.publish(Message(id="mf", type="test", 
+                q.publish(Message(id=f"mf-{i}", type="test", 
                                       sender="test_sender", recipient="test_recipient",
                                       payload=None, timestamp=time.time(),
                                       priority=MessagePriority.NORMAL,
