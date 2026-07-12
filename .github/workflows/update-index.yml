@@ -2,7 +2,7 @@ name: Update pip index # pip index html update
 on:
   release: #release
     types: [published] # publish type
-  workflow_dispatch:
+  workflow_dispatch: #workflow
   push:
     branches:
       - gh-pages  # ← triggers when you push to gh-pages here
