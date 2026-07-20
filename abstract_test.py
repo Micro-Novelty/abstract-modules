@@ -145,7 +145,7 @@ async_manager = PipelineAsyncManager(main_model,
 
 async_manager.start(method='Transformer_included', bootstrap_token=None) # boothstrap token is optional for better security
 
-texts = {'test_titles': test_titles, 'label_map': label_map, 'rules': example_rules, 'X': None, 'y': None, 'use_transformer': True}
+texts = {'test_titles': test_titles, 'label_map': label_map, 'rules': example_rules, 'X': X, 'y': y, 'use_transformer': True}
 regular_predict = async_manager.predict(
    texts=texts,
    timeout=60,
