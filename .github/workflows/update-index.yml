@@ -23,7 +23,7 @@ jobs:
         run: | # run it too
           python3 generate_index.py 
 
-      - name: Commit and push #push here too
+      - name: Commit and push #push here too.
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
