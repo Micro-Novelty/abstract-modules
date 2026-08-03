@@ -98,6 +98,7 @@ results, chosen_label, confidence = main_prediction.advanced_prediction_method(t
                              save_results=True,
                              batch_size=2)
 
+main_model.evaluate_mlp_performance(X, y, label_map)
 
 dataset, _ = main_model.data_preparation(titles, label_map)
 sequence_inputs = main_model.sequence_encoding(dataset)
