@@ -3,7 +3,7 @@ on:
   release: #release
     types: [published] # publish type
   workflow_dispatch: #workflow.
-  push:
+  push: #
     branches:
       - gh-pages  # ← triggers when you push to gh-pages here
 
