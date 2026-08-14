@@ -20,10 +20,10 @@ jobs:
       - name: Regenerate index # regenerate to index.html
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} #token
-        run: | # run.
+        run: | # run
           python3 generate_index.py 
 
-      - name: Commit and push #push here too.
+      - name: Commit and push # push here too.
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
