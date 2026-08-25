@@ -95,7 +95,6 @@ results, chosen_label, confidence = main_prediction.advanced_prediction_method(t
                              show_proba=False, top_k=3, 
                              use_transformer=True,
                              return_attention=False,
-                             save_results=True,
                              batch_size=2)
 
 main_model.evaluate_mlp_performance(X, y, label_map)
