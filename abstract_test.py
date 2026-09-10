@@ -376,8 +376,9 @@ async def main(main_pipeline, X, y):
 asyncio.run(main(pipeline, X, y))
 
  # knn_forward_inference() lives inside PipelinePredictionManager, so you need to call this class to initiate the knn_forward_inference() function.
-losses, accs = main_prediction.knn_forward_inference(X, y, memory_metric='euclidean', training=True, batch_size=2, train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
-transformer_probs, attn_weights = main_prediction.knn_forward_inference(X, y, memory_metric='euclidean', training=False) # for returning kNN Transformer probabilities and attention weights only.
+losses, accs, _ = main_prediction.knn_forward_inference(X, y, label_map=None, memory_metric='euclidean', training=True, batch_size=2, train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
+transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y, label_map=label_map memory_metric='euclidean', training=False) # for returning kNN Transformer probabilities and attention weights only.
+transformer_probs, attn_weights, _ = main_prediction.knn_forward_inference(X, y, label_map=None memory_metric='euclidean', training=False) # for returning kNN Transformer probabilities and attention weights only.
  # Note: - train_mode can be set to 'dynamic_backward' if you have very large dataset, this makes Transformer Q, K, V be much more dynamic and grants flexible learning behavior for large dataset.
          # - train_mode can be set to 'fixed_backward' if you have small dataset, this makes Transformer Q, K, V to stay frozen so the FFN flow will handle the Training, making Learning in very little samples possible and deterministic in behavior.
          # - y sample must be one-hot encoded manually before its passed to the function, since the function above will not automatically one-hot encode the y-sample.
