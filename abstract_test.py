@@ -403,8 +403,6 @@ encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passe
 
 results = snn_predict(X=X, y=y, label_map=label_map, encoder=encoder, net=net)
 # net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
-# Small Note:
-  - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
 # .... # your own custom prediction block.
 
 
