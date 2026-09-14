@@ -389,6 +389,22 @@ main_prediction.pipeline.storage.save_memory_head(memory_name) # This function s
 main_prediction.pipeline.storage.load_hnsw_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
 main_prediction.pipeline.storage.load_head_memory_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
 
+
+from AbstractIntegratedModule import train_snn_network
+from AbstractIntegratedModule import snn_predict
+
+encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passed samples and Training epochs
+      batch_size=32, n_steps=20, # n number of steps for Input encoding for Noise robustness, higher steps, higher robustness from Noise.
+      n_hidden=64, lr=2e-3,  # pass hidden layers (n_hidden) for the SNN Network, and learning rate for the SNN network.
+      pretrain_steps=200, unsupervised_stdp=False # pretrain steps can be set to 0 if unsupervised_std is set to False (This is for STDP Unsupervised leearning for the SNN before BPTT Training in order to shape better Weights)
+      )
+# This function already includes diagnostic modules for the Whole SNN network to give you a Clearer picture of the SNN Condition before Prediction.
+# Very High Dead neurons is a sign of Bad development, consider to Increase hidden layers or learning rate in order for the Model to improve.
+
+results = snn_predict(X=X, y=y, label_map=label_map, encoder=encoder, net=net)
+# net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
+# Small Note:
+  - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
 # .... # your own custom prediction block.
 
 
@@ -1048,4 +1064,5 @@ class TestThreadedMessageQueue:
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
+
 
