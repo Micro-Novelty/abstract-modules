@@ -403,9 +403,124 @@ encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passe
 
 results = snn_predict(X=X, y=y, label_map=label_map, encoder=encoder, net=net)
 # net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
-# Small Note:
-  - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
 # .... # your own custom prediction block.
+
+
+from AbstractIntegratedModule import Dense
+from AbstractIntegratedModule import Transformer
+import numpy as np
+import pandas as pd
+import kagglehub
+
+memory_name = 'elect_agent_memory'
+
+path = kagglehub.dataset_download("robikscube/hourly-energy-consumption")
+print("Path to dataset files:", path)
+
+# Load dataset
+# Load dataset
+
+df = pd.read_csv("PJME_hourly.csv", parse_dates=["Datetime"], index_col="Datetime")
+df = df.sort_index()
+
+# Resample ke harian (dari per jam)
+daily = df.resample("D").sum()
+
+# ============================================================ #
+# TAMBAHAN: Feature engineering di sini, SEBELUM ambil .values
+# ============================================================ #
+
+# Fitur kalender
+daily["dayofweek"] = daily.index.dayofweek     # 0=Senin, 6=Minggu
+daily["month"] = daily.index.month
+daily["is_weekend"] = (daily.index.dayofweek >= 5).astype(int)
+
+# Fitur lag (harian, bukan per jam lagi)
+daily["lag_1"] = daily["PJME_MW"].shift(1)      # kemarin
+daily["lag_7"] = daily["PJME_MW"].shift(7)      # minggu lalu (hari sama)
+daily["lag_14"] = daily["PJME_MW"].shift(14)    # 2 minggu lalu
+
+# Rolling statistics
+daily["rolling_mean_7"] = daily["PJME_MW"].rolling(7).mean()
+daily["rolling_std_7"] = daily["PJME_MW"].rolling(7).std()
+
+# Buang baris awal yang jadi NaN akibat shift/rolling
+daily = daily.dropna()
+
+feature_cols = ["PJME_MW", "dayofweek", "month", "is_weekend",
+                "lag_1", "lag_7", "lag_14", "rolling_mean_7", "rolling_std_7"]
+
+# Cek langsung setelah instantiate, SEBELUM forward dipanggil
+
+
+
+sec_main_model = IntegratedPipeline(
+   memory_name=memory_name,  # memory name for the AI you already initialized
+   use_async=True, # local asynchronous prediction is permitted, if not PipelineAsyncManager wont start asynchronous prediction.
+   agent_port=5001, # this port is used to set AgentDistributedInference server (optional)
+   ssl_cert_file=None, ssl_key_file=None,# provide your cert_file path or key_file path (optional)
+   ssl_context=None, # used by the Agent server. (optional)
+   client_ssl_context=None # used by the client. (optional)
+   ) 
+
+main_prediction = PipelinePredictionManager(
+   sec_main_model, # your initialized pipeline
+   label_csv='energy_training.txt', 
+   # your filename that contains the .txt file and contains the CSV format.
+   # the Agent will automatically searched the nearby folder like: downloads, data, and desktop folder.
+   target_title='window_title', label='label')
+
+# example_manual_training is a .txt file that contain csv format like above example.
+X, y, config = main_prediction.prepare_dataset(daily, feature_cols, target_col_name="PJME_MW",
+                                      window_size=30, horizon=1)
+
+num_classes = y.shape[1]
+input_dim = X.shape[1]
+total_layers = []
+layer1 = Dense(70, 100, activation='relu')
+layer2 = Dense(100, num_classes, activation=None)
+total_layers.append(layer1)
+total_layers.append(layer2)
+
+
+sec_main_model.initialize_mlp_model(input_dim, num_classes, total_layers=total_layers)
+
+
+# activate explainability capability to explain uncertainty:
+sec_main_model.show_explainability_details = True
+sec_main_model.distribution.predict_manager = main_prediction # set PipelinePredictionManager to AgentDistributedInference for asynchronous prediction later (Very important for asynchronous prediction)
+# main_model.use_transformer = True if you want to use transformer, this will notify all modules that used advanced_prediction_method will initiate prediction with both transformer and MLP.
+
+# set IntegratedPipeline Penalty rate when it output wrong answer:
+sec_main_model.error_decay = 0.75
+sec_main_model.use_lstm = False
+# error_rate > 0.5 means old errors fade quickly — a class that was wrong 3 predictions ago matters less than one wrong just now, making the model less likely to output repetitive wrong answer.
+# this a flexible tunable-knob for the model judgement regarding wrong answer, this will propagate through prediction layers to inform about the model repetitive answer and calibrate it immediately.
+
+# (Optional manual setup) if you want to Cuztomize the Model setup.
+# You can set how much epochs are needed to Train your MLP, LSTM and Transformer for your Models, along with their Learning rates. (lr).
+
+titles, _, label_map = main_prediction.load_labels_from_csv(
+   'energy_training.txt',  # the name of your .txt file with CSV format.
+   'window_title', 'label')
+
+# main_model.freeze_learning = True
+# prevent the model from training and make weights unchanged for static prediction.
+feature_cols = ["PJME_MW", "dayofweek", "month", "is_weekend",
+                    "lag_1", "lag_7", "lag_14", "rolling_mean_7", "rolling_std_7"]
+
+sec_main_model.model_setup(mlp_train_epochs=50, tf_train_epochs=20, tf_lr=0.1, mlp_lr=0.1,
+                    lstm_train_epochs=200, lstm_lr=5e-1, lstm_hidden_dim=64, tf_heads=4, tf_d_model=32,
+                    error_decay=0.75)
+
+sec_main_model.training_method(X=X, y=y, titles=None, rules=None, label_map=label_map, len_feature=len(feature_cols))
+results, chosen_label, confidence = main_prediction.advanced_prediction_method(
+   titles=None, label_map=label_map, rules=None, # titles and rules can be set to None (Optional samples), but label_map must NOT be None.
+      X=X, y=y, # you could create your own X and y samples and put it here (Optional, y sample must already be one hot encoded first).
+            show_proba=False, top_k=3, 
+            use_transformer=True,
+            return_attention=False,
+            batch_size=2)
 
 
 """
