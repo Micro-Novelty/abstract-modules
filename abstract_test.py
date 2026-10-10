@@ -1,208 +1,142 @@
-import asyncio
-import time
-import AbstractIntegratedModule
-from AbstractIntegratedModule import (
-    IntegratedPipeline,
-    PipelinePredictionManager,
-    CohesiveAgentDeployment
-)
-import numpy as np
-from sklearn.datasets import make_classification, make_moons, make_circles, load_breast_cancer, load_digits
-from sklearn.model_selection import train_test_split
 
-
-print(f'FILE: {AbstractIntegratedModule.__file__}')
-memory_name = 'agent_memory'
-main_model = IntegratedPipeline(memory_name=memory_name, use_async=True, agent_port=8080,ssl_cert_file=None, ssl_key_file=None) # provide cert_file path or key_file path (optional)
-main_prediction = PipelinePredictionManager(main_model, label_csv='ManualsTraining.txt', target_title='window_title', label='label')
-# example_manual_training is a .txt file that contain csv format like above example.
-
-example_rules = [
-                     # === WORK / PRODUCTIVITY ===
-                     (r'code|programming|develop|debug|compile|script', 'focused_work'),
-                     (r'vscode|visual_studio|ide|terminal|shell', 'focused_work'),
-                     (r'notion|evernote|onenote|notes|todo|task', 'productive'),
-                     (r'slack|teams|discord|zoom|meeting|call', 'communication'),
-                     (r'email|gmail|outlook|inbox|mail', 'communication'),
-                     
-                     # === ENTERTAINMENT ===
-                     (r'youtube|netflix|twitch|stream|video', 'entertainment'),
-                     (r'music|spotify|soundcloud|audio|player', 'entertainment'),
-                     (r'game|gaming|steam|epic|play', 'gaming'),
-                     (r'facebook|instagram|tiktok|social|post', 'social_media'),
-                     
-                     # === BROWSING ===
-                     (r'chrome|firefox|edge|safari|browser', 'browsing'),
-                     (r'google|search|wiki|wiki|article', 'information'),
-                     (r'stackoverflow|github|docs|documentation', 'research'),
-
-                     # more rules
-                 ]
-# activate explainability capability to explain uncertainty:
-main_model.show_explainability_details = False
-main_model.distribution.predict_manager = main_prediction
-main_model.autonomous = True
-
-# deprecate transformer use.
-main_model.use_transformer = False
-
-# test samples with more sophisticated rules and more complex titles for prediction
-# (title, intent)
-test_titles = [
- ("Opening Thesis.docx", "slight_work"),
- ("Watching YouTube and Google Chrome", "distracted"),
- ("Watching Slack", "communication"),
- ("Programming in Visual Studio Code", "focused_work"),
- ("Watching netflix.com - Chrome", "break"),
-# more titles 
- ]  
-
-def test_sets(type=None):
-    dt = 0
-    if type == "moons" or dt > 5:
-    	X, y_raw = make_moons(
-    	n_samples = 1000, 
-    	noise=0.75,  
-    	random_state=99)
-    else:
-    	dt += 1    
-    	if dt <= 5:
-    		print("type sample 1")
-    		X, y_raw = make_classification(
-    		n_samples=1000,
-    		n_features=3,
-    		n_classes=3,
-    		n_informative=3,
-    		n_redundant=0,
-    		class_sep=1.5,
-    		random_state=259)
-    	else:
-    		generalization_test()
-    	
-    return X, y_raw
-
-X, y = test_sets()
-            
-titles, _, label_map = main_prediction.load_labels_from_csv('ManualsTraining.txt', 'window_title', 'label')
-# small training with simple titles
-main_model.train(titles, y)
-
-y = np.asarray(y)
-print(X.shape, y.shape)
-   
-results, chosen_label, confidence = main_prediction.advanced_prediction_method(test_titles, label_map, example_rules,
-                             X=X, y=y,
-                             show_proba=False, top_k=3, 
-                             use_transformer=True,
-                             return_attention=False,
-                             batch_size=2)
-
-main_model.evaluate_mlp_performance(X, y, label_map)
-
-dataset, _ = main_model.data_preparation(titles, label_map)
-sequence_inputs = main_model.sequence_encoding(dataset)
-X_raw_generation, y, n_classes, input_dim = main_model.mlp_training_features(example_rules, dataset)
-
-main_model.initialize_fitting(dataset)
-X_raw_features = main_model.tfidf.transform(X_raw_generation).toarray()
-transformer_features = main_model.transformer_pooled_features(sequence_inputs)
-X_features = np.concatenate([X_raw_features, transformer_features], axis=-1)
-
-peer_probability_calibration = main_model.predict_proba(sequence_inputs, X_features, type='Hybrid', embedded=True) # peer-to-peer calibration is inside this function
-
-from AbstractIntegratedModule import PipelineAsyncManager
+from AbstractIntegratedModule import IntegratedPipeline
+from AbstractIntegratedModule import PipelinePredictionManager
+from AbstractIntegratedModule import Dense
+from AbstractIntegratedModule import Transformer
 from AbstractIntegratedModule import SecurityConfig
+from AbstractIntegratedModule import PipelineAsyncManager
 from AbstractIntegratedModule import SecurityLevel
+from AbstractIntegratedModule import CohesiveAgentDeployment
+from AbstractIntegratedModule import QuantConfig
+import numpy as np
+import pandas as pd
+import kagglehub
+import asyncio
 
-print(" = TESTING ASYNCHRONOUS PREDICTION MANAGER = ")
-# Set discovery secret (in production, use environment variable)
-secret_key = 'my-ultra-safe-secret-key-for-authentication-here-with-nice-api-key-for-robustness-for-real-deployment-scenario' # you can customize this key
-
-
-security_config = SecurityConfig(
-      max_text_length=10000, # can be extended
-      max_queue_size=100, # can be extended
-      rate_limit_requests=60,  # 60 per minute
-      require_api_key=True, #
-      max_pending_tasks=50,
-      request_timeout=60.0,
-
-      # Start with no IP restrictions, you can add allowed IPs for asynchronous prediction externally, boothstrap_auth for better security
-      allowed_ips=[],
-      blocklisted_ips=[],
-      require_bootstrap_auth = False # true for better security (Not recommended, cause less flexibility)
-  )
-
-async_manager = PipelineAsyncManager(main_model, 
-        main_prediction, # your previous initialized PipelinePredictionManager
-        config=security_config, 
-        state_file=None, # state file is used to load known security logs ex: ip used, ip blacklisted, etc.
-        security_level=SecurityLevel.PRODUCTION, # production level security initiated
-        api_key=secret_key, #set secret key you initialized        
-        max_workers=4, # workers to initiate prediction, more workers, more capabilities to process prediction requests.
-        task_timeout=30, 
-        max_retries=3 ) # retries after failure during prediction
-
-async_manager.start(method='Transformer_included', bootstrap_token=None) # boothstrap token is optional for better security
-
-texts = {'test_titles': test_titles, 'label_map': label_map, 'rules': example_rules, 'X': X, 'y': y, 'use_transformer': True}
-regular_predict = async_manager.predict(
-   texts=texts,
-   timeout=60,
-   retries=None,
-   api_key=secret_key) # advanced prediction method for asynchronous prediction.
-
-# with retries: async_manager.predict(texts, timeout=60, retries=5, api_key=secret_key) # 5 times retry if failed
-
-print('[==] Initiating advanced batch prediction')
-predicted_output = async_manager.advanced_batch_prediction(test_titles, label_map, example_rules, api_key=secret_key, client_ip=None)
-# for better and faster advanced prediction, consider using advanced batch prediction like in the above example
-
-print('[+] Initiating samples prediction without titles and rules')
-results, chosen_label, confidence = main_prediction.advanced_prediction_method(titles=None, label_map=label_map, rules=None,
-                             X=X, y=y,
-                             show_proba=False, top_k=3, 
-                             use_transformer=True,
-                             return_attention=False,
-                             batch_size=2)
-
-# ... more features you can add
-
-# ================ SECOND TEST ================
-SECRET_KEY = "test-secret-key-here-for-robustness"
-
-LABEL_FILE = "ManualsTraining.txt"
-PEER_FILE = "peer_config.json"
-
-memory_name = "arm64_test"
-
-pipeline = IntegratedPipeline(memory_name=memory_name, use_async=True, agent_port=8080)
-
-predict_manager = PipelinePredictionManager(
-    pipeline,
-    label_csv=LABEL_FILE,
-    target_title="window_title",
-    label="label"
-)
+# SETUP BLOCK.
+memory_name = 'agent_1_memory'
 
 
+# Load dataset (Change to Your own dataset here, just make sure to change the column names and features accordingly)
+df = pd.read_csv("PJME_hourly.csv", parse_dates=["Datetime"], index_col="Datetime")
+df = df.sort_index()
+daily = df.resample("D").sum()
+
+
+# calender features (day of week, month, is weekend) (suit to what your dataset actually has)
+daily["dayofweek"] = daily.index.dayofweek     # 0=Senin, 6=Minggu
+daily["month"] = daily.index.month
+daily["is_weekend"] = (daily.index.dayofweek >= 5).astype(int)
+
+# lag features (in days, not hours) (suit to what your dataset actually has)
+daily["lag_1"] = daily["PJME_MW"].shift(1)      # yesterday (lag_1 will be used in feature_cols)
+daily["lag_7"] = daily["PJME_MW"].shift(7)      # last week (same day) (lag_7 will be used in feature_cols)
+daily["lag_14"] = daily["PJME_MW"].shift(14)    # 2 weeks ago (lag_14 will be used in feature_cols)
+
+# Rolling statistics (suit to what your dataset actually has)
+daily["rolling_mean_7"] = daily["PJME_MW"].rolling(7).mean() # (rolling_mean_7 will be used in feature_cols)
+daily["rolling_std_7"] = daily["PJME_MW"].rolling(7).std()   # (rolling_std_7 will be used in feature_cols)
+
+# delete the first row that contains NaN values due to lag and rolling calculations
+daily = daily.dropna()
+
+# Feature columns: a set of list thatcontains the features you want to use for training and prediction, 
+# you can add or remove features based on your own dataset and requirements.
+# so change this list to suit your dataset and requirements, but make sure the features you choose are actually present in your dataset.
+feature_cols = ["PJME_MW", "dayofweek", "month", "is_weekend",
+                "lag_1", "lag_7", "lag_14", "rolling_mean_7", "rolling_std_7"]
+# example of other feature_cols:
+# ["Global_active_power", "Global_reactive_power", "Voltage",
+            #    "Global_intensity", "Sub_metering_1", "Sub_metering_2",
+            #   "Sub_metering_3", "dow_sin", "dow_cos"]
+# feature_cols = ["daily_sales", "is_promo", "is_holiday", "dow_sin", "dow_cos",
+               #  "lag_7", "lag_14", "rolling_mean_7"]
+
+
+# NOTE:
+# PIPELINE BLOCK: This is where you initialize the IntegratedPipeline and PipelinePredictionManager, and set up the training and prediction configurations.
+
+main_model = IntegratedPipeline(
+   memory_name=memory_name,  # memory name for the AI you already initialized
+   use_async=True, # local asynchronous prediction is permitted, if not PipelineAsyncManager wont start asynchronous prediction.
+   agent_port=5001, # this port is used to set AgentDistributedInference server (optional)
+   ssl_cert_file=None, ssl_key_file=None,# provide your cert_file path or key_file path (optional)
+   ssl_context=None, # used by the Agent server. (optional)
+   client_ssl_context=None # used by the client. (optional)
+   ) 
+
+
+main_prediction = PipelinePredictionManager(
+   main_model, # your initialized pipeline
+   label_csv='ManualsTraining.txt', 
+   # your filename that contains the csv and contains the CSV format.
+   # the Agent will automatically searched the nearby folder like: downloads, data, and desktop folder.
+   target_title='window_title', label='label')
+
+
+# Prepare dataset using prepare_dataset() method, this will create the X and y samples for training and prediction.
+# argument description: 
+# daily: the dataset you want to use for training and prediction, in this case we use the daily dataset/dataframe we created earlier.
+# feature_cols: the list of features you want to use for training and prediction, in this case we use the feature_cols list we created earlier.
+# target_col_name: the name of the target column you want to predict, in this case we use "PJME_MW" as the target column.
+# window_size: the number of past days you want to use for training and prediction, in this case we use 30 days.
+# horizon: the number of days you want to predict into the future, in this case we use 5 days.
+X, y, config = main_prediction.prepare_dataset(daily, feature_cols, target_col_name="PJME_MW",
+                                      window_size=30, horizon=5)
+
+# activate explainability capability to explain uncertainty:
+main_model.show_explainability_details = True
+main_model.distribution.predict_manager = main_prediction # set PipelinePredictionManager to AgentDistributedInference for asynchronous prediction later (Very important for asynchronous prediction)
+# main_model.use_transformer = True if you want to use transformer, this will notify all modules that used advanced_prediction_method will initiate prediction with both transformer and MLP.
+
+# set IntegratedPipeline Penalty rate when it output wrong answer:
+main_model.error_decay = 0.75
+main_model.use_lstm = True
+main_model.use_transformer = True
+# error_decay > 0.5 means old errors fade quickly — a class that was wrong 3 predictions ago matters less than one wrong just now, making the model less likely to output repetitive wrong answer.
+# this a flexible tunable-knob for the model recovery after error regarding wrong answers, this will propagate through prediction layers to inform about the model repetitive answer and the model calibrate its prediction immediately.
+
+
+# load your label_map from your .txt file that contains CSV format, this will be used for training and prediction.
+# window_title: the column name in your .txt file that contains the window title, 
+# label: the column name in your .txt file that contains the label.
+titles, _, label_map = main_prediction.load_labels_from_csv(
+   'ManualsTraining.txt',  # the name of your .txt file with CSV format.
+   'window_title', 'label')
+
+# NOTE:
+# set input_dim and num_classes based on the shape of X and the number of unique labels in label_map.
+# this are important for the MLP and Transformer model to know how many input features and output classes it has to handle.
+input_dim = X.shape[1] if X.ndim > 1 else 1
+num_classes = max(len(label_map), int(np.max(y)) + 1)
+
+'''("Listening to Spotify", "entertainment"),
+    ("Playing Steam Game", "gaming"),
+    ("Checking Discord messages", "communication"),
+    ("Reading documentation on StackOverflow", "research"),
+    ("Downloading files from Google Drive", "file_work"),
+    ("Using Terminal to run scripts", "system_work"),
+    ("Analyzing data in Excel", "data_work"),
+    ("Attending Zoom meeting", "communication"),
+    ("Designing in Photoshop", "creative"),
+    ("Learning from Coursera course", "learning"),
+    ("Using Calculator utility", "utility"),
+    ("Browsing Facebook on Chrome", "social_media"),
+    ("Reading an eBook in PDF format", "reading"),
+    ("Listening to a podcast", "audio_learning"),
+    ("Using Google Translate", "utility"),'''
+
+# (OPTIONAL) You can also define your own test_titles and rules for testing the model, 
+# this is useful for testing the model's performance on unseen data if your goals are classifying work activities, etc.
 test_titles = [
-    ("Programming in VSCode", "focused_work"),
-    ("Watching YouTube", "entertainment")
-]
+    ("Opening Thesis.docx", "slight_work"),
+    ("Watching YouTube and Google Chrome", "distracted"),
+    ("Watching Slack", "communication"),
+    ("Programming in Visual Studio Code", "focused_work"),
+    ("Watching netflix.com - Chrome", "break"),
+    ]
 
-
-async def main(main_pipeline, X, y):
-    sec_pipeline = IntegratedPipeline(memory_name=memory_name, use_async=True, agent_port=8010)
-    rules = [
-        # === WORK / PRODUCTIVITY ===
-        (r'code|programming|develop|debug|compile|script', 'focused_work'),
-        (r'vscode|visual_studio|ide|terminal|shell', 'focused_work'),
-        (r'notion|evernote|onenote|notes|todo|task', 'productive'),
-        (r'slack|teams|discord|zoom|meeting|call', 'communication'),
-        (r'email|gmail|outlook|inbox|mail', 'communication'),
-        
-        # === ENTERTAINMENT ===
+'''# === ENTERTAINMENT ===
         (r'youtube|netflix|twitch|stream|video', 'entertainment'),
         (r'music|spotify|soundcloud|audio|player', 'entertainment'),
         (r'game|gaming|steam|epic|play', 'gaming'),
@@ -257,138 +191,444 @@ async def main(main_pipeline, X, y):
         (r'ultra|firefox|edge|browser|unix|web', 'medium rare'),
         (r'ultra_rare|music|linux|Home_linux_router', 'bit-rare'),
         (r'medium-rare|steam|red_hat_enterprise_linux|play|windows', 'very rare'),
-        (r'rarer|oracle|system|config|server_linux_router', 'absolute rare'),
+        (r'rarer|oracle|system|config|server_linux_router', 'absolute rare'),'''
+
+# (OPTIONAL) You can also define your own rules for testing the model,
+# this is useful for controlling the model's learning performance on unseen data if your goals are classifying work activities, etc.
+rules = [
+        # === WORK / PRODUCTIVITY ===
+        (r'code|programming|develop|debug|compile|script', 'focused_work'),
+        (r'vscode|visual_studio|ide|terminal|shell', 'focused_work'),
+        (r'notion|evernote|onenote|notes|todo|task', 'productive'),
+        (r'slack|teams|discord|zoom|meeting|call', 'communication'),
+        (r'email|gmail|outlook|inbox|mail', 'communication'),
+
+        # === ENTERTAINMENT ===
+         (r'youtube|netflix|twitch|stream|video', 'entertainment'),
+         (r'music|spotify|soundcloud|audio|player', 'entertainment'),
+         (r'game|gaming|steam|epic|play', 'gaming'),
+         (r'facebook|instagram|tiktok|social|post', 'social_media'),
+         
+         # === BROWSING ===
+         (r'chrome|firefox|edge|safari|browser', 'browsing'),
+         (r'google|search|wiki|wiki|article', 'information'),
+         (r'stackoverflow|github|docs|documentation', 'research'),
     ]
- 
 
-    agent1 = CohesiveAgentDeployment(
-        pipeline=main_pipeline,
-        memory_name="agent1",
-        filename=LABEL_FILE,
-        target_title="window_title",
-        label_name="label",
-        enable_peers=True,
-        peer_discovery_port=5555,
-        secret_key=SECRET_KEY,
-        shared_auth_token=SECRET_KEY,
-        predict_manager=predict_manager,
-        peer_config=PEER_FILE,
-    )
+# NOTE:
+# (OPTIONAL) You can also define your own QuantConfig for quantization-aware training (QAT), 
+# this is useful for reducing the model size and improving inference speed, 
+# especially for deployment on edge devices.
+qcfg = QuantConfig(enabled=True, w_bits=7, a_bits=7)
 
-    agent2 = CohesiveAgentDeployment(
-        pipeline=sec_pipeline,
-        memory_name="agent2",
-        filename=LABEL_FILE,
-        target_title="window_title",
-        label_name="label",
-        enable_peers=True,
-        peer_discovery_port=5556,
-        secret_key=SECRET_KEY,
-        shared_auth_token=SECRET_KEY,
-        predict_manager=predict_manager,
-        peer_config=PEER_FILE,
-    )
+# Set up the main model with the specified configurations you wants, this will override the default configurations of the IntegratedPipeline, 
+# you can change the parameters to suit your dataset and requirements.
+main_model.model_setup(mlp_train_epochs=1000, tf_train_epochs=10, tf_lr=0.1, mlp_lr=0.5,
+                       lstm_train_epochs=50, lstm_lr=5e-1, lstm_hidden_dim=64, tf_heads=4, tf_d_model=32,
+                       error_decay=0.75)
 
-    await agent1.start()
-    print("Agent 1 started on port 5555, Time:", time.time())
-    await agent2.start()
-    print("Agent 2 started on port 5556, Time:", time.time())
 
-    await asyncio.sleep(3)
+# NOTE:
+# INITIALIZATION BLOCK: This is where you initialize the MLP, Transformer, and LSTM models with the specified configurations you want.
 
-    api_key = agent1.get_api_key()
+# MLP Initialization: This is where you initialize the MLP model with the specified configurations you want.
+# titles: the titles you want to use for training and prediction, in this case we use None (Optional).
+# rules: the rules you want to use for training and prediction, in this case we use None (Optional).
+# label_map: the label map you want to use for training and prediction, in this case we use the label_map we created earlier.
+# input_dim: the input dimension you want to use for creating MLP Dense layers, in this case we use the input_dim we created earlier.
+# output_dim: the output dimension you want to use for creating MLP Dense layers, in this case we use the num_classes we created earlier.
+# hidden_layers: the hidden layers you want to use for creating MLP Dense layers, in this case we use [64, 64, 64] (changeable).
+# use_qat: whether to use quantization-aware training (QAT) or not, in this case we use True (can be set to False).
+# qcfg: the quantization configuration you want to use for QAT, in this case we use the qcfg we created earlier (can be set to None).
+main_model.initialize_mlp_model(titles=test_titles, rules=rules, label_map=label_map, input_dim=None, output_dim=None, hidden_layers=[12, 17, 35], use_qat=False, qcfg=None)
 
-    texts = {
-        "test_titles": test_titles,
-        "label_map": label_map,
-        "rules": rules,
-        "X":None,
-        "y":None,
-        "use_transformer": False,
-        "agent_id": "arm64-demo"
-    }
+# Transformer Initialization: This is where you initialize the Transformer model with the specified configurations you want.
+# vocab_size: the vocabulary size you want to use for creating Transformer layers, set vocab_size to 1 if your task is regression, set to your own vocab size /None if your goal is classification (changeable).
+# num_classes: the number of classes you want to use for creating Transformer layers, in this case we use the num_classes we created earlier.
+# d_model: the dimension of the Transformer model you want to use for creating Transformer layers, this layer is crucial for the Models learning capacity, in this case we use 128 (changeable).
+# n_heads: the number of attention heads you want to use for creating Transformer layers, in this case we use 4 (Lower head means less computational power and complexity) (changeable).
+# n_features: the number/length of features you have, you need to use the len(feature_cols) of your dataset.
+# attn_dropout: the dropout rate you want to use for the Transformer layers, in this case we use 0.1 (changeable).
+# ffn_dropout: the dropout rate you want to use for the Transformer feed-forward network, in this case we use 0.05 (changeable).
+# weight_decay: the weight decay you want to use for the Transformer layers, in this case we use 1e-4 for smaller and more deterministic decay (changeableand useful for testing the model capability).
+# task: the task you want to use for the Transformer model, set to 'regression' for regression task, or "classification" for classification task (changeable).
+main_model.initialize_transformer_model(titles=test_titles, rules=rules, label_map=label_map, vocab_size=5, num_classes=None, d_model=128, n_heads=4, n_features=None,
+                                                attn_dropout=0.1, ffn_dropout=0.05, weight_decay=1e-4, task='classification')
 
-    sec_texts = {
-        "test_titles": None,
-        "label_map": label_map,
-        "rules": None,
-        "X":X,
-        "y":y,
-        "use_transformer": False,
-        "agent_id": "arm64-demo"
-    }
+# LSTM Initialization: This is where you initialize the LSTM model with the specified configurations you want.
+# input_size: the input size you want to use for creating LSTM layers, in this case we use 1 (changeable and flexible, meaning you can set to whatever input size you need).
+# hidden_size: the hidden size you want to use for creating LSTM layers, in this case we use 32 (changeable and flexible, meaning you can set to whatever hidden size you need).
+# output_size: the output size you want to use for creating LSTM layers, in this case we use 1 (changeable and flexible, meaning you can set to whatever output size you need).
+# dropout_rate: the dropout rate you want to use for the LSTM layers, in this case we use 0.1 (changeable and flexible, meaning you can set to whatever dropout rate you need).
+# seed: the random seed you want to use for the LSTM layers, in this case we use 42 (changeable and flexible, meaning you can set to whatever seed you need).
+main_model.initialize_lstm_model(input_size=1, hidden_size=32, output_size=1, dropout_rate=0.1, seed=42)
 
-    # agent1.pipeline.use_transformer = False
-    # agent2.pipeline.use_transformer = False
 
-    result = await agent1.multi_modal_peer_ensemble_prediction(
-        texts=texts,
-        api_key=api_key,
-        method="advanced",
-        disable_sync=True
-    )
+# Memory Loading Block: This is where you load the model memory if you have previously saved it, this will allow you to continue training or prediction from where you left off.
+# This function will automatically adds the loaded weights to the current model, so you can continue training or prediction without losing any progress.
+memory_loaded, lstm_weights, transformer_weights, mlp_weights, = main_model.load_model_memory()
 
-    result2 = await agent2.multi_modal_peer_ensemble_prediction(
-        texts=texts,
-        api_key=api_key,
-        method="advanced",
-        disable_sync=True
-    ) 
 
-    print('[+] Initiating P2P without texts and rules, Only X and Y samples')
-    result3 = await agent1.multi_modal_peer_ensemble_prediction(
-        texts=sec_texts,
-        api_key=api_key,
-        method="advanced",
-        disable_sync=True
-    )
+# TRAINING BLOCK: This is where you train the MLP, Transformer, and LSTM models with the specified configurations you want.
 
-    result4 = await agent2.multi_modal_peer_ensemble_prediction(
-        texts=sec_texts,
-        api_key=api_key,
-        method="advanced",
-        disable_sync=True
-    ) 
+# MLP Training: This is where you train the MLP model with the specified configurations you want.
+# titles and rules are optional, you can set them to None if you don't want to use them for training, but label_map must NOT be None.
+# X and y are the training samples you want to use for training the MLP model, in this case we use the X and y we created earlier.
+# pass your task, train_epochs however you like.
+# momentum: the momentum you want to use for the MLP optimizer, higher momentum leads to faster convergence/better learning, in this case we use 0.75 (changeable).
+# learning rate (lr): the learning rate you want to use for the MLP optimizer, higher learning rate leads to faster convergence/better learning, in this case we use 0.5 (changeable).
+main_model.train_mlp_model(titles=test_titles, rules=rules, label_map=label_map, X=None, y=None, task='classification', train_epochs=500, momentum=0.9, lr=0.01)
 
-    print("\n=== RESULT ===")
-    print(f"\n📊 Ensemble Result for Agent 1:")
-    print(f"   Prediction: {result.get('prediction', 'N/A')}")
-    print(f"   Confidence: {result.get('confidence', 0):.2%}")
+# Transformer Training: This is where you train the Transformer model with the specified configurations you want.
+# titles and rules are optional, you can set them to None if you don't want to use them for training, but label_map must NOT be None.
+# X and y are the training samples you want to use for training the Transformer model, in this case we use the X and y we created earlier.
+# pass your task, train_epochs however you like.
+# mode: the training mode you want to use for the Transformer model : 
+   # in this case we use 'dynamic_backward': use dynamic_backward for training if you have large samples,
+   # use 'fixed_backward' for training if you have small samples (such as only titles and rules are present, or very small length of X samples (<100)),
+# batch_size: the batch size you want to use for the Transformer training, in this case we use 2 (changeable, based on how many batch you want, smaller batch means more memory usage).
+# learning rate (lr): the learning rate you want to use for the Transformer optimizer, higher learning rate leads to faster convergence/better learning, in this case we use 0.5 (changeable).
+main_model.train_transformer(titles=test_titles, rules=rules, label_map=label_map, X=None, y=None,  task='classification', d_model=128, train_epochs=10, 
+                                    mode='fixed_backward', lr=0.5, batch_size=4)
 
-    print('[=] For agent 2: ')
-    print(f"   Second Prediction: {result2.get('prediction', 'N/A')}")
-    print(f"   Second Confidence: {result2.get('confidence', 0):.2%}")
+# LSTM Training: This is where you train the LSTM model with the specified configurations you want.
+# titles and rules are optional, you can set them to None if you don't want to use them for training, but label_map must NOT be None.
+# raw_X and raw_Y are the training samples you want to use for training the LSTM model, in this case we use the X and y we created earlier.
+# n_display: display what the LSTM previously thoughts about each sample after training, this will inform the LSTM uncertainty, intervals.
+# n_train: the percentage of training samples you want to use for training the LSTM model, in this case we use 0.8 or 80% of Training samples is used (changeable).
+main_model.train_lstm(titles=test_titles, rules=rules, label_map=label_map, raw_X=None, raw_Y=None, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
 
-    print('[=] For agent 3: ')
-    print(f"   Third Prediction: {result3.get('prediction', 'N/A')}")
-    print(f"   Third Confidence: {result3.get('confidence', 0):.2%}")
+          
 
-    print('[=] For agent 4: ')
-    print(f"   Fourth Prediction: {result4.get('prediction', 'N/A')}")
-    print(f"   Fourth Confidence: {result4.get('confidence', 0):.2%}")
+# NOTE:
+# PREDICTION BLOCK:
+# the below section called advanced_prediction_method(...) is a prediction method that will output a single answer based from numerous predictions and how frequent it was predicted by a single model (This is called majority-based answer choosing method), it will output a single answer from the label_map you have given as its final prediction.
+# meaning advanced_prediction method is only used to predict an answer based on the given label_map and only output a single answer, the entire predictions the model has made was saved in 'results' variable below, so you can see how the model predicts each batch of the given sample.
+# titles and rules are optional, label map must not be None, but both label_map, X, y, titles and rules cannot be all empty.
+# Use case: - classification and both regression problems that requires a model to only output a single answer.
+# top_k : meaning, the model will only prints 3 labels it has predicted in the terminal (This will be used when titles and rules is not None, otherwise this argument will not be used.)
+# batch_size : the batch size you want to use for the prediction, in this case we use 2 (changeable, based on how many batch you want, smaller batch means more memory usage).
+results, chosen_label, confidence = main_prediction.advanced_prediction_method(
+   titles=test_titles, label_map=label_map, rules=rules, # titles and rules can be set to None (Optional samples), but label_map must NOT be None.
+      X=None, y=None, # you could create your own X and y samples and put it here (Optional, y sample must already be one hot encoded first).
+      top_k=3, batch_size=4)
 
-    agent1._peer_agent.stop_server()
-    agent2._peer_agent.stop_server()
+# save Weights as a memory to the SQLite database, this will allow you to load the model memory later for further prediction.
+main_model.save_weights(memory_name, model_type='Pipeline') 
 
-    await agent1.shutdown()
-    await agent2.shutdown()
 
-asyncio.run(main(pipeline, X, y))
+# SECURITY BLOCK: This is where you set up the security configurations for the PipelineAsyncManager, this will allow you to control the access to the model and its predictions.
+# change this api key into a more secure and complex key, this will be used for authentication when you want to do asynchronous predictions with the model.
+api_key = 'my-ultra-safe-secret-key-for-authentication'
+
+# max_text_length: the maximum length of the text you want to allow for prediction, in this case we use 10000 (changeable).
+# max_queue_size: the maximum number of requests you want to allow in the queue, in this case we use 100 (changeable).
+# rate_limit_requests: the maximum number of requests you want to allow per minute, in this case we use 60 (changeable).
+# require_api_key: whether to require an API key for prediction or not, in this case we use True for safety (changeable).
+
+config = SecurityConfig(
+      max_text_length=10000,
+      max_queue_size=100,
+      rate_limit_requests=60,  # 60 per minute
+      require_api_key=True,
+      max_pending_tasks=50,
+      request_timeout=30.0,
+
+      # Start with no IP restrictions, add via admin API
+      allowed_ips=[],
+      blocklisted_ips=[],
+      require_bootstrap_auth = False
+   )
+
+# NOTE:
+# Asynchronous Prediction Block: This is where you set up the PipelineAsyncManager for asynchronous predictions, this will allow you to make predictions without blocking the main thread and allows you to handle multiple requests concurrently.
+# pass the PipelinePredictionManager of yours (main_prediction in this case), and the IntegratedPipeline of yours (here its main_model), 
+# the SecurityConfig as config, and the api_key as api_key, and the max_workers of 4, more worker, means more concurrent requests (changeable), 
+# the task_timeout as 30 (changeable), and the max_retries as 3 (changeable).
+wrapper = PipelineAsyncManager(main_model, 
+         main_prediction, 
+         config=config, 
+         state_file=None, 
+         security_level=SecurityLevel.PRODUCTION,
+         api_key=api_key, 
+         max_workers=4, 
+         task_timeout=30, 
+         max_retries=3 )
+'''
+# NOTE:
+# start the PipelineAsyncManager event loop, this will start the asynchronous prediction event loop and allow you to make predictions without blocking the main thread.
+# set method to 'Transformer_included' if you want to use the Transformer model for prediction (Only one option, not changeable).
+# set bootstrap_token to None if you don't want to use bootstrap authentication, otherwise set it to your own bootstrap token (changeable).
+wrapper.start(method='Transformer_included', bootstrap_token=None)
+
+# NOTE:
+# Asynchronous Prediction Example: This is where you make an asynchronous prediction using the PipelineAsyncManager, this will allow you to make predictions without blocking the main thread and allows you to handle multiple requests concurrently.
+# payloads: this is the dictionary of payloads you want to send to the PipelineAsyncManager for prediction, in this case we use the test_titles, label_map, rules, and use_transformer as True (changeable).
+# pass X and y samples for prediction, in this case we use the X and y we created earlier (Not changeable and X and y samples are must be passed here).
+# api_key can be passed or set to None, if you set require_api_key to True in the SecurityConfig, then you must pass the api_key here.
+# chunk_size: this is the chunk size you want to use for the prediction, in this case we use 1000 because our sample is large, and we require larger chunks to save memory and prevent memory overhead (changeable).
+# client_ip (optional): this is the client IP you want to use for the prediction, in this case we set it to None (changeable, client_ip is a string, not listsor dicts).
+# max_predictions: this is the maximum number of predictions you want to allow for the model to predict on each samples you have provided, in this case we use 3 max predictions, after that the model will abort all predictions (changeable).
+# stop_on_error: this is the boolean flag you want to use for the prediction, in this case we set it to False, meaning if its False, when the model encounters an error during prediction, it will continue to predict the next sample, set to True if you want the model to stop on the first error (changeable).
+# overall_timeout: this is the overall timeout you want to use for the prediction, in this case we set it to 20000 seconds, meaning if the model takes longer than 20000 seconds to predict, it will abort the prediction (changeable).
+
+# IMPORTANT NOTE: the async_predict variable will return all the prediction results, prediction success, failures, so you can directly see how the model predicts each batch of the given sample.
+
+payloads = {'test_titles': test_titles, 'label_map': label_map, 'rules': rules, 'use_transformer': True}
+async_predict = wrapper.prediction_method(payloads, X, y_samples=y, chunk_size=1000,
+                 max_predictions=3, task="auto", timeout=1000,
+                 api_key=api_key, client_ip=None, overall_timeout=20000,
+                 stop_on_error=False)
+
+print(f'[=] Results: {async_predict}')
+'''
+
+
+# Peer-to-Peer (P2P) Deployment Block: This is where you set up the CohesiveAgentDeployment for peer-to-peer deployment, this will allow you to deploy the model on multiple agents and allows them to communicate with each other for distributed inference.
+
+# NOTE:
+# secret_key: this is the secret key you want to use for authentication between agents, in
+# filename: this is the filename you want the model to access, in this case we use 'ManualsTraining.txt' (changeable).
+# timeout: this is the timeout you want to use for the prediction, in this case we set it to 20000 seconds (changeable).
+# agent_1_id: this is the agent id you want to use for the first agent, in this case we use 'ID-01' (changeable).
+# agent_2_id: this is the agent id you want to use for the second agent, in this case we use 'ID-02' (changeable).
+secret_key = 'my-ultra-safe-secret-key-for-authentication'
+filename = 'ManualsTraining.txt'
+main_model.timeout = 20000
+agent_1_id = 'ID-01'
+agent_2_id = 'ID-02'
+
+
+# function must be 'async' to use the await syntaxes below:
+async def agent_test(task='classification'):
+
+   # NOTE:
+   # shared_auth_token : the secret_key you have alread made
+   # trusted networks is a list (must be list), that contain allowed IPs for networking.
+   # pass IntegratedPipeline (here its main_model), and PipelinePredictionManager (here its main_prediction).
+   # agent memory_name can be anything you want.
+   # pass target_titles and label_name (matches the target_title you used during loading your label_map inside your .txt file.)
+
+   # enable_peers : allow an agent to communicate with other agent.
+   # security_level:
+      # PRODUCTION: secure for P2P networking,
+      # DEVELOPMENT: not-secure for P2P networking
+
+   # Agent 1 - Primary (Port 5555)
+   agent1 = CohesiveAgentDeployment(
+      pipeline=main_model,
+      memory_name="agent_primary",
+      filename=filename,
+      target_title='window_title',
+      label_name='label',
+      security_level="DEVELOPMENT",
+      enable_peers=True,
+      trusted_networks=['127.0.0.1/32', '192.168.1.0/24'],
+      peer_discovery_port=5555,
+      shared_auth_token=secret_key,
+      predict_manager=main_prediction
+   )
+
+   # Agent 2 - Secondary (Port 5556)
+   # same integratedpipeline model and main_prediction model, or you can set a different/second IntegratedPipeline and PipelinePredictionManager here (Changeable).
+   agent2 = CohesiveAgentDeployment(
+      pipeline=main_model,
+      memory_name="agent_secondary",
+      filename=filename,
+      target_title='window_title',
+      label_name='label',
+      security_level="DEVELOPMENT",
+      enable_peers=True,
+      trusted_networks=['127.0.0.1/32', '192.168.1.0/24'],
+      peer_discovery_port=5556,
+      shared_auth_token=secret_key,
+      predict_manager=main_prediction
+   )
+
+   try:
+      # Start both agents
+      print("\n🚀 Starting Agent 1...")
+      await agent1.start()
+      print("✅ Agent 1 started on port 5555")
+      
+      print("\n🚀 Starting Agent 2...")
+      await agent2.start()
+      print("✅ Agent 2 started on port 5556")
+      
+      # Give servers time to fully bind.
+      await asyncio.sleep(2)
+      
+      # Get API keys
+      api_key = agent1.get_api_key()
+      print(f"\n🔑 Using API Key: {api_key[:20]}...")
+
+      # first payload for agent-1:
+      payloads_1 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":None, "y":None, "use_transformer": True, "agent_id": agent_1_id}
+      # second payload for agent-2:
+      payloads_2 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":None, "y":None, "use_transformer": True, "agent_id": agent_2_id}
+
+      # NOTE:
+      # daily: is the dataframe/dataset you have loaded, if its present meaning You can use it in P2P using this setup for regression prediction:
+      if daily is not None and task == 'regression':
+         regression_payload = {
+               'context': daily,
+               'feature_columns': feature_cols,
+               'target_col_name': 'PJME_MW',
+               'window_size': 30,
+               'horizon': 1
+         }
+      else:
+         # set to None for classification tasks.
+         regression_payload = None
+
+      # Make prediction with peer ensemble
+      # Peer Connection will be ensured successfull during P2P search. 
+      result = await agent1.multi_modal_peer_ensemble_prediction(
+         payloads=payloads_1,
+         api_key=api_key,
+         method='advanced',
+         disable_sync=True,
+         regression_payload=regression_payload
+      )
+
+      result2 = await agent2.multi_modal_peer_ensemble_prediction(
+         payloads=payloads_2,
+         api_key=api_key,
+         method='advanced',
+         disable_sync=True,
+         regression_payload=regression_payload
+      ) 
+      
+      print(f"\n📊 Ensemble Result for Agent 1:")
+      print(f"   Prediction: {result.get('prediction', 'N/A')}")
+      print(f"   Confidence: {result.get('confidence', 0):.2%}")
+
+      print(f"   Second Prediction: {result2.get('prediction', 'N/A')}")
+      print(f"   Second Confidence: {result2.get('confidence', 0):.2%}")
+
+      # Keep running briefly.
+      print("\n⏳ Cluster stable. Waiting 30 seconds before shutdown...")
+      await asyncio.sleep(30)
+      agent1._peer_agent.stop_server()
+      agent2._peer_agent.stop_server()
+      
+   except Exception as e:
+      print(f"\n❌ Error in cluster: {e}")
+      traceback.print_exc()
+
+   # NOTE: shutdown is important for each agent. (IMPORTANT)
+   print("\n🛑 Shutting down cluster...")
+   await agent1.shutdown()
+   await agent2.shutdown()
+   print("✅ Cluster shutdown complete")
+
+
+# Initiate agent_test
+asyncio.run(agent_test(task='classification'))
+
+
+# Step 2
+from AbstractIntegratedModule import PipelineAsyncManager
+from AbstractIntegratedModule import SecurityConfig
+from AbstractIntegratedModule import SecurityLevel
+
+# NOTE:
+# All the three Models (MLP, Transformer, LSTM MUST be Initialized, Trained before initiating Asynchronous Prediction, the Initialization workflow can be seen above.)
+# Replace the regular advanced_prediction_method() with this asynchronous setups:
+
+
+print(" = TESTING ASYNCHRONOUS PREDICTION MANAGER = ")
+# Set discovery secret (in production, use environment variable)
+secret_key = 'my-ultra-safe-secret-key-for-authentication' # you can customize this key
+
+# max_text_length: the maximum length of the text you want to allow for prediction, in this case we use 10000 (changeable).
+# max_queue_size: the maximum number of requests you want to allow in the queue, in this case we use 100 (changeable).
+# rate_limit_requests: the maximum number of requests you want to allow per minute, in this case we use 60 (changeable).
+# require_api_key: whether to require an API key for prediction or not, in this case we use True for safety (changeable).
+security_config = SecurityConfig(
+      max_text_length=10000, # can be extended
+      max_queue_size=100, # can be extended
+      rate_limit_requests=60,  # 60 per minute
+      require_api_key=True, #
+      max_pending_tasks=50,
+      request_timeout=60.0,
+
+      # Start with no IP restrictions, you can add allowed IPs for asynchronous prediction externally, boothstrap_auth for better security
+      allowed_ips=[],
+      blocklisted_ips=[],
+      require_bootstrap_auth = False # true for better security (Not recommended, cause less flexibility)
+  )
+
+# NOTE:
+# Asynchronous Prediction Block: This is where you set up the PipelineAsyncManager for asynchronous predictions, this will allow you to make predictions without blocking the main thread and allows you to handle multiple requests concurrently.
+# pass the PipelinePredictionManager of yours (main_prediction in this case), and the IntegratedPipeline of yours (here its main_model), 
+# the SecurityConfig as config, and the api_key as api_key, and the max_workers of 4, more worker, means more concurrent requests (changeable), 
+# the task_timeout as 30 (changeable), and the max_retries as 3 (changeable).
+async_manager = PipelineAsyncManager(main_model, 
+        main_prediction, # your previous initialized PipelinePredictionManager
+        config=security_config, 
+        state_file=None, # state file is used to load known security logs ex: ip used, ip blacklisted, etc.
+        security_level=SecurityLevel.PRODUCTION, # production level security initiated
+        api_key=secret_key  #set secret key you initialized
+        max_workers=4, # workers to initiate asynchronous tasks, more workers, lower memory usage.
+        task_timeout=30, 
+        max_retries=3) # retries after failure during prediction
+
+async_manager.start(method='Transformer_included', bootstrap_token=None) # boothstrap token is optional for better security
+
+
+# NOTE:
+# Asynchronous Prediction Example: This is where you make an asynchronous prediction using the PipelineAsyncManager, this will allow you to make predictions without blocking the main thread and allows you to handle multiple requests concurrently.
+# payloads: this is the dictionary of payloads you want to send to the PipelineAsyncManager for prediction, in this case we use the test_titles, label_map, rules, and use_transformer as True (changeable).
+# pass X and y samples for prediction, in this case we use the X and y we created earlier (Not changeable and X and y samples are must be passed here).
+# api_key can be passed or set to None, if you set require_api_key to True in the SecurityConfig, then you must pass the api_key here.
+# chunk_size: this is the chunk size you want to use for the prediction, in this case we use 1000 because our sample is large, and we require larger chunks to save memory and prevent memory overhead (changeable).
+# client_ip (optional): this is the client IP you want to use for the prediction, in this case we set it to None (changeable, client_ip is a string, not listsor dicts).
+# max_predictions: this is the maximum number of predictions you want to allow for the model to predict on each samples you have provided, in this case we use 3 max predictions, after that the model will abort all predictions (changeable).
+# stop_on_error: this is the boolean flag you want to use for the prediction, in this case we set it to False, meaning if its False, when the model encounters an error during prediction, it will continue to predict the next sample, set to True if you want the model to stop on the first error (changeable).
+# overall_timeout: this is the overall timeout you want to use for the prediction, in this case we set it to 20000 seconds, meaning if the model takes longer than 20000 seconds to predict, it will abort the prediction (changeable).
+
+# IMPORTANT NOTE: the async_predict variable will return all the prediction results, prediction success, failures, so you can directly see how the model predicts each batch of the given sample.
+
+payloads = {'test_titles': test_titles, 'label_map': label_map, 'rules': rules, 'use_transformer': True}
+async_predict = wrapper.prediction_method(payloads, X, y_samples=y, chunk_size=1000,
+                 max_predictions=3, task="auto", timeout=1000,
+                 api_key=api_key, client_ip=None, overall_timeout=20000,
+                 stop_on_error=False)
+
+print(f'[=] Results: {async_predict}')
+
+
+# NOTE: This function below MUST require test_titles or titles, label_map and example rules:
+print('[==] Initiating advanced batch prediction')
+         predicted_output = async_manager.advanced_batch_prediction(test_titles, label_map, example_rules, 
+         X=None, y=None, # provide your initialized X and y samples (Also Optional, can be set to None)
+         secret_key=secret_key, client_ip=None) # you can add client_ip to provide a robust authentication paired with secret_key
+# for better and faster advanced prediction when using titles and rules, consider using advanced batch prediction like in the above example
+
 
  # knn_forward_inference() lives inside PipelinePredictionManager, so you need to call this class to initiate the knn_forward_inference() function.
-losses, accs, _ = main_prediction.knn_forward_inference(X, y, label_map=None, memory_metric='euclidean', training=True, batch_size=2, train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
-transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y, label_map=label_map, memory_metric='euclidean', training=False) # for returning kNN Transformer probabilities and attention weights only.
-transformer_probs, attn_weights, _ = main_prediction.knn_forward_inference(X, y, label_map=None, memory_metric='euclidean', training=False) # for returning kNN Transformer probabilities and attention weights only.
+ losses, accs, _ = main_prediction.knn_forward_inference(X, y,
+ label_map=None, # Label map can be safely set to None during Training phase.
+ memory_metric='euclidean', training=True, batch_size=2,
+ train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
+
+ transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y,
+ label_map=label_map, # Label map can be inserted in here, or you Can set this to None,
+                       # if set to None this function will only returns Transformer prob and attn_weights.
+ memory_metric='euclidean',
+ training=False) # for returning kNN Transformer probabilities and attention weights only.
  # Note: - train_mode can be set to 'dynamic_backward' if you have very large dataset, this makes Transformer Q, K, V be much more dynamic and grants flexible learning behavior for large dataset.
          # - train_mode can be set to 'fixed_backward' if you have small dataset, this makes Transformer Q, K, V to stay frozen so the FFN flow will handle the Training, making Learning in very little samples possible and deterministic in behavior.
          # - y sample must be one-hot encoded manually before its passed to the function, since the function above will not automatically one-hot encode the y-sample.
 
-main_prediction.pipeline.storage.save_hnsw_memory(memory_name) # This function saves the HNSW setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
-main_prediction.pipeline.storage.save_memory_head(memory_name) # This function saves the Per-Head memory setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
+ main_prediction.pipeline.storage.save_hnsw_memory(memory_name) # This function saves the HNSW setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
+ main_prediction.pipeline.storage.save_memory_head(memory_name) # This function saves the Per-Head memory setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
 
-main_prediction.pipeline.storage.load_hnsw_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
-main_prediction.pipeline.storage.load_head_memory_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
+ main_prediction.pipeline.storage.load_hnsw_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
+ main_prediction.pipeline.storage.load_head_memory_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
 
+# .... # your own custom prediction block.
 
 from AbstractIntegratedModule import train_snn_network
 from AbstractIntegratedModule import snn_predict
@@ -403,781 +643,5 @@ encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passe
 
 results = snn_predict(X=X, y=y, label_map=label_map, encoder=encoder, net=net)
 # net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
-# .... # your own custom prediction block.
-
-
-from AbstractIntegratedModule import Dense
-from AbstractIntegratedModule import Transformer
-import numpy as np
-import pandas as pd
-import kagglehub
-
-memory_name = 'elect_agent_memory'
-
-path = kagglehub.dataset_download("robikscube/hourly-energy-consumption")
-print("Path to dataset files:", path)
-
-# Load dataset
-# Load dataset
-
-df = pd.read_csv("PJME_hourly.csv", parse_dates=["Datetime"], index_col="Datetime")
-df = df.sort_index()
-
-# Resample ke harian (dari per jam)
-daily = df.resample("D").sum()
-
-# ============================================================ #
-# TAMBAHAN: Feature engineering di sini, SEBELUM ambil .values
-# ============================================================ #
-
-# Fitur kalender
-daily["dayofweek"] = daily.index.dayofweek     # 0=Senin, 6=Minggu
-daily["month"] = daily.index.month
-daily["is_weekend"] = (daily.index.dayofweek >= 5).astype(int)
-
-# Fitur lag (harian, bukan per jam lagi)
-daily["lag_1"] = daily["PJME_MW"].shift(1)      # kemarin
-daily["lag_7"] = daily["PJME_MW"].shift(7)      # minggu lalu (hari sama)
-daily["lag_14"] = daily["PJME_MW"].shift(14)    # 2 minggu lalu
-
-# Rolling statistics
-daily["rolling_mean_7"] = daily["PJME_MW"].rolling(7).mean()
-daily["rolling_std_7"] = daily["PJME_MW"].rolling(7).std()
-
-# Buang baris awal yang jadi NaN akibat shift/rolling
-daily = daily.dropna()
-
-feature_cols = ["PJME_MW", "dayofweek", "month", "is_weekend",
-                "lag_1", "lag_7", "lag_14", "rolling_mean_7", "rolling_std_7"]
-
-# Cek langsung setelah instantiate, SEBELUM forward dipanggil
-
-
-
-sec_main_model = IntegratedPipeline(
-   memory_name=memory_name,  # memory name for the AI you already initialized
-   use_async=True, # local asynchronous prediction is permitted, if not PipelineAsyncManager wont start asynchronous prediction.
-   agent_port=5001, # this port is used to set AgentDistributedInference server (optional)
-   ssl_cert_file=None, ssl_key_file=None,# provide your cert_file path or key_file path (optional)
-   ssl_context=None, # used by the Agent server. (optional)
-   client_ssl_context=None # used by the client. (optional)
-   ) 
-
-main_prediction = PipelinePredictionManager(
-   sec_main_model, # your initialized pipeline
-   label_csv='energy_training.txt', 
-   # your filename that contains the .txt file and contains the CSV format.
-   # the Agent will automatically searched the nearby folder like: downloads, data, and desktop folder.
-   target_title='window_title', label='label')
-
-# example_manual_training is a .txt file that contain csv format like above example.
-X, y, config = main_prediction.prepare_dataset(daily, feature_cols, target_col_name="PJME_MW",
-                                      window_size=30, horizon=1)
-
-num_classes = y.shape[1]
-input_dim = X.shape[1]
-total_layers = []
-layer1 = Dense(70, 100, activation='relu')
-layer2 = Dense(100, num_classes, activation=None)
-total_layers.append(layer1)
-total_layers.append(layer2)
-
-
-sec_main_model.initialize_mlp_model(input_dim, num_classes, total_layers=total_layers)
-
-
-# activate explainability capability to explain uncertainty:
-sec_main_model.show_explainability_details = True
-sec_main_model.distribution.predict_manager = main_prediction # set PipelinePredictionManager to AgentDistributedInference for asynchronous prediction later (Very important for asynchronous prediction)
-# main_model.use_transformer = True if you want to use transformer, this will notify all modules that used advanced_prediction_method will initiate prediction with both transformer and MLP.
-
-# set IntegratedPipeline Penalty rate when it output wrong answer:
-sec_main_model.error_decay = 0.75
-sec_main_model.use_lstm = False
-# error_rate > 0.5 means old errors fade quickly — a class that was wrong 3 predictions ago matters less than one wrong just now, making the model less likely to output repetitive wrong answer.
-# this a flexible tunable-knob for the model judgement regarding wrong answer, this will propagate through prediction layers to inform about the model repetitive answer and calibrate it immediately.
-
-# (Optional manual setup) if you want to Cuztomize the Model setup.
-# You can set how much epochs are needed to Train your MLP, LSTM and Transformer for your Models, along with their Learning rates. (lr).
-
-titles, _, label_map = main_prediction.load_labels_from_csv(
-   'energy_training.txt',  # the name of your .txt file with CSV format.
-   'window_title', 'label')
-
-# main_model.freeze_learning = True
-# prevent the model from training and make weights unchanged for static prediction.
-feature_cols = ["PJME_MW", "dayofweek", "month", "is_weekend",
-                    "lag_1", "lag_7", "lag_14", "rolling_mean_7", "rolling_std_7"]
-
-sec_main_model.model_setup(mlp_train_epochs=50, tf_train_epochs=20, tf_lr=0.1, mlp_lr=0.1,
-                    lstm_train_epochs=200, lstm_lr=5e-1, lstm_hidden_dim=64, tf_heads=4, tf_d_model=32,
-                    error_decay=0.75)
-
-sec_main_model.training_method(X=X, y=y, titles=None, rules=None, label_map=label_map, len_feature=len(feature_cols))
-results, chosen_label, confidence = main_prediction.advanced_prediction_method(
-   titles=None, label_map=label_map, rules=None, # titles and rules can be set to None (Optional samples), but label_map must NOT be None.
-      X=X, y=y, # you could create your own X and y samples and put it here (Optional, y sample must already be one hot encoded first).
-            show_proba=False, top_k=3, 
-            use_transformer=True,
-            return_attention=False,
-            batch_size=2)
-
-
-"""
-Adversarial concurrency test suite.
-
-Purpose
--------
-Regular happy-path CI tests one call at a time, on the happy path,
-and almost never calls stop() mid-flight. That's exactly why the bugs
-found in this session (pending-future leaks, tuple-format mismatches
-in priority queues, stop() calling the wrong primitives, silently
-swallowed handler exceptions, check-then-act start races) never
-surfaced despite hundreds of green CI runs.
-
-This suite deliberately does the things happy-path tests avoid:
-  1. Fires many concurrent requests at once (races need concurrency)
-  2. Injects handler failures on a DETERMINISTIC, SEEDED schedule
-     (not scattered random.random() calls -- one controlled RNG,
-     so any failure this suite finds is exactly reproducible)
-  3. Calls stop() while requests are still in flight
-  4. Checks accounting invariants (submitted == processed + failed + timeout)
-  5. Checks for resource leaks (threads, tasks, pending futures) before
-     vs after a full start/stress/stop cycle
-  6. Repeats every scenario across multiple seeds via parametrize, so a
-     failure is tied to a specific reproducible seed, not a fluke
-
-How to run
-----------
-    pip install pytest pytest-asyncio
-    pytest test_concurrency_stress.py -v
-
-Adjust the imports below to match your actual module layout --
-this suite is written against the *interfaces* fixed during the
-debugging session (AsyncMessageQueue, WorkerPool + AsyncResultQueue,
-AutoBatcherAutomation, ThreadedMessageQueue) rather than assuming a
-single import path, since class organization may differ.
-"""
-
-import asyncio
-import gc
-import queue
-import random
-import threading
-import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
-
-import pytest
-
-# ---------------------------------------------------------------------------
-# Adjust these imports to your actual module path, e.g.:
-#   from AbstractIntegratedModule import (
-#       AsyncMessageQueue, WorkerPool, AsyncResultQueue,
-#       AutoBatcherAutomation, ThreadedMessageQueue, Message,
-#       RequestStatus, AsyncRequest,
-#   )
-# ---------------------------------------------------------------------------
-from AbstractIntegratedModule import (          # noqa: E402
-    AsyncMessageQueue,
-    ThreadedMessageQueue,
-)
-
-try:
-    from AbstractIntegratedModule import (
-        WorkerPool, AsyncResultQueue, RequestStatus,
-    )
-    _HAS_WORKER_POOL = True
-except ImportError:
-    _HAS_WORKER_POOL = False
-
-try:
-    from AbstractIntegratedModule import AutoBatcherAutomation
-    _HAS_AUTOBATCHER = True
-except ImportError:
-    _HAS_AUTOBATCHER = False
-
-try:
-    from AbstractIntegratedModule import Message, MessagePriority
-except ImportError:
-    # minimal stand-in so this file is runnable even before wiring the
-    # real Message class in -- replace with your actual Message import
-    from enum import Enum
-
-    class MessagePriority(Enum):
-        HIGH   = 0
-        NORMAL = 1
-        LOW    = 2
-
-    @dataclass
-    class Message:
-        id: str
-        type: str
-        payload: Any = None
-        priority: MessagePriority = MessagePriority.NORMAL
-        timeout: float = 5.0
-        retry_count: int = 0
-        max_retries: int = 2
-        callback: Optional[Callable] = None
-
-        @property
-        def is_expired(self) -> bool:
-            return False
-
-
-# ===========================================================================
-# Deterministic, seeded fault injection
-#
-# One controlled RNG per test, seeded explicitly. A failure is scheduled
-# by INDEX (the Nth call fails), not by an unseeded random chance sprinkled
-# through the handler. This makes every failure exactly reproducible: if
-# this suite ever finds a bug, `seed` + `fail_every` fully describe how to
-# reproduce it byte-for-byte.
-# ===========================================================================
-
-@dataclass
-class FaultSchedule:
-    """Deterministic failure schedule: fails on specific call indices."""
-    seed: int
-    failure_rate: float = 0.2
-    total_calls: int = 500
-    _fail_indices: set = field(default_factory=set, init=False)
-    _call_counter: int = field(default=0, init=False)
-
-    def __post_init__(self):
-        rng = random.Random(self.seed)           # isolated RNG, not global random
-        n_failures = int(self.total_calls * self.failure_rate)
-        self._fail_indices = set(
-            rng.sample(range(self.total_calls), k=min(n_failures, self.total_calls))
-        )
-
-    def should_fail(self) -> bool:
-        idx = self._call_counter
-        self._call_counter += 1
-        return idx in self._fail_indices
-
-    @property
-    def expected_failures(self) -> int:
-        return len(self._fail_indices)
-
-
-def make_flaky_handler(schedule: FaultSchedule, work_ms: float = 1.0):
-    """Handler that fails on the schedule's precomputed indices."""
-    def handler(message):
-        if work_ms > 0:
-            time.sleep(work_ms / 1000)
-        if schedule.should_fail():
-            raise ValueError(f"scheduled failure for message {message.id}")
-        return {"ok": True, "id": message.id}
-    return handler
-
-
-def make_async_flaky_handler(schedule: FaultSchedule, work_ms: float = 1.0):
-    async def handler(message):
-        if work_ms > 0:
-            await asyncio.sleep(work_ms / 1000)
-        if schedule.should_fail():
-            raise ValueError(f"scheduled failure for message {message.id}")
-        return {"ok": True, "id": message.id}
-    return handler
-
-
-# ===========================================================================
-# Resource leak helpers
-# ===========================================================================
-
-def snapshot_threads() -> set:
-    """Named set of currently alive threads, for before/after leak diffing."""
-    return {t.name for t in threading.enumerate() if t.is_alive()}
-
-
-def snapshot_tasks() -> set:
-    try:
-        return {id(t) for t in asyncio.all_tasks() if not t.done()}
-    except RuntimeError:
-        return set()
-
-
-def assert_no_leaked_threads(before: set, after: set, allowed_prefixes=()):
-    """
-    Fails if new threads exist after teardown that weren't there before,
-    unless their name starts with an explicitly allowed prefix (e.g. for
-    daemon threads that are known-abandoned per the earlier discussion of
-    Python's inability to force-kill threads).
-    """
-    leaked = after - before
-    unexplained = {
-        name for name in leaked
-        if not any(name.startswith(p) for p in allowed_prefixes)
-    }
-    assert not unexplained, (
-        f"Leaked thread(s) still alive after stop(): {unexplained}. "
-        f"Before={len(before)} threads, after={len(after)} threads."
-    )
-
-
-# ===========================================================================
-# 1. AsyncMessageQueue -- concurrency, accounting, mid-flight shutdown
-# ===========================================================================
-
-class TestAsyncMessageQueue:
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("seed", [1, 2, 3, 42, 1337])
-    async def test_concurrent_publish_accounting(self, seed):
-        """
-        Fires N concurrent publish() calls with a deterministic failure
-        schedule and asserts every message resolves exactly once, and
-        that submitted == succeeded + failed (no message vanishes,
-        none is double-counted).
-
-        This is the test that would have caught the AsyncMessageQueue
-        pending-future leak: if set_result()/set_exception() is ever
-        skipped on some exit path, this assertion fails immediately
-        instead of the leak being invisible.
-        """
-        q = AsyncMessageQueue(max_size=2000)
-        schedule = FaultSchedule(seed=seed, failure_rate=0.25, total_calls=300)
-        q.register_handler("test", make_async_flaky_handler(schedule, work_ms=0.5))
-
-        messages = [
-            Message(id=f"m-{seed}-{i}", type="test",
-                    sender="test_sender", recipient="test_recipient",
-                    payload=None, timestamp=time.time(),
-                    priority=MessagePriority.NORMAL, timeout=10.0)
-            for i in range(schedule.total_calls)
-        ]
-
-        results = await asyncio.gather(
-            *(q.publish(m) for m in messages),
-            return_exceptions=True,
-        )
-
-        succeeded = sum(1 for r in results if not isinstance(r, Exception))
-        failed    = sum(1 for r in results if isinstance(r, Exception))
-
-        assert succeeded + failed == schedule.total_calls, (
-            "Some messages neither succeeded nor failed -- likely lost "
-            "in the queue or a future was never resolved."
-        )
-        # allow slack: retries can convert some scheduled failures to
-        # eventual successes depending on retry policy, so assert an
-        # upper bound rather than an exact match
-        assert failed <= schedule.expected_failures + 1, (
-            f"More failures ({failed}) than the fault schedule injected "
-            f"({schedule.expected_failures}) -- something is failing "
-            f"that shouldn't be."
-        )
-
-        # every message.id should have been removed from `pending`
-        assert len(q.pending) == 0, (
-            f"{len(q.pending)} futures still in `pending` after all "
-            f"publishes resolved -- this is the leak found in the "
-            f"original _worker(): futures were only popped on some "
-            f"exit paths, not all of them."
-        )
-
-        await q.stop()
-
-    @pytest.mark.asyncio
-    async def test_stop_mid_flight_no_crash_no_leak(self):
-        """
-        The specific gap identified during the session: happy-path tests
-        exercise start() thoroughly and stop() almost never, and never
-        while requests are still in flight. This test calls stop() while
-        ~half the batch is still being processed.
-        """
-        q = AsyncMessageQueue(max_size=500)
-        schedule = FaultSchedule(seed=7, failure_rate=0.1, total_calls=200)
-        q.register_handler("test", make_async_flaky_handler(schedule, work_ms=5.0))
-
-        tasks = [
-            asyncio.create_task(
-                q.publish(Message(id=f"mf-{i}", type="test", 
-                                      sender="test_sender", recipient="test_recipient",
-                                      payload=None, timestamp=time.time(),
-                                      priority=MessagePriority.NORMAL,
-                                          timeout=15.0))
-            )
-            for i in range(200)
-        ]
-
-        await asyncio.sleep(0.05)   # let roughly some, not all, complete
-        await q.stop(timeout=3.0)
-
-        # after stop(), no task should hang forever -- give them a bounded
-        # window to settle (either resolved before stop, or raised due to
-        # cancellation/shutdown), then assert none are still pending
-        done, pending = await asyncio.wait(tasks, timeout=5.0)
-        assert not pending, (
-            f"{len(pending)} publish() calls never resolved after "
-            f"stop() -- shutdown left callers hanging indefinitely."
-        )
-
-    @pytest.mark.asyncio
-    async def test_double_start_does_not_spawn_duplicate_workers(self):
-        """
-        Guards against the check-then-act race in _ensure_started():
-        two concurrent first-publish() calls racing to start the worker
-        must not result in two worker tasks both draining the same queue.
-        """
-        q = AsyncMessageQueue(max_size=100)
-        q.register_handler("test", lambda m: {"ok": True})
-
-        # race many concurrent "first" calls against _ensure_started
-        await asyncio.gather(*(q._ensure_started() for _ in range(50)))
-
-        assert q._worker_task is not None
-        # there should be exactly one live worker task, not one per race entrant
-        live_worker_tasks = [
-            t for t in asyncio.all_tasks()
-            if t is q._worker_task and not t.done()
-        ]
-        assert len(live_worker_tasks) == 1
-
-        await q.stop()
-
-
-# ===========================================================================
-# 2. WorkerPool + AsyncResultQueue -- circuit breaker, health, leak check
-# ===========================================================================
-
-@pytest.mark.skipif(not _HAS_WORKER_POOL, reason="WorkerPool not importable")
-class TestWorkerPool:
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("seed", [11, 22, 33])
-    async def test_worker_pool_stress_accounting(self, seed):
-        """
-        Fires a large batch through submit()->WorkerPool with a seeded
-        failure schedule, then asserts every request resolved and the
-        AsyncResultQueue's own bookkeeping matches reality.
-        """
-        result_queue = AsyncResultQueue(max_size=1000)
-        pool = WorkerPool(result_queue, num_workers=4)
-
-        schedule = FaultSchedule(seed=seed, failure_rate=0.2, total_calls=200)
-
-        def predict_func(texts, api_key=None, client_ip=None):
-            if schedule.should_fail():
-                raise RuntimeError("scheduled prediction failure")
-            return [{"label": "ok"} for _ in texts]
-
-        await pool.start(predict_func)
-
-        request_ids = [
-            await result_queue.submit(texts=[f"t{i}"])
-            for i in range(schedule.total_calls)
-        ]
-
-        # poll for completion with a hard timeout, rather than assuming
-        # instantaneous processing
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            pending = [
-                rid for rid in request_ids
-                if result_queue._requests[rid].status == RequestStatus.PENDING
-                or result_queue._requests[rid].status == RequestStatus.PROCESSING
-            ]
-            if not pending:
-                break
-            await asyncio.sleep(0.05)
-
-        statuses = [result_queue._requests[rid].status for rid in request_ids]
-        unresolved = [s for s in statuses if s not in (
-            RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.TIMEOUT
-        )]
-        assert not unresolved, (
-            f"{len(unresolved)} requests never reached a terminal status "
-            f"within the deadline."
-        )
-
-        if hasattr(pool, "get_health"):
-            health = pool.get_health()
-            assert health["active_workers"] >= 1, (
-                "All workers died during the stress run -- the circuit "
-                "breaker retired every worker instead of surviving "
-                "transient failures."
-            )
-
-        await pool.stop()
-
-    @pytest.mark.asyncio
-    async def test_double_start_does_not_leak_orphaned_tasks(self):
-        """
-        Regression test for the specific leak found in WorkerPool.start():
-        calling start() twice without stop() used to drop the reference to
-        the first batch of worker tasks without cancelling them.
-        """
-        result_queue = AsyncResultQueue(max_size=100)
-        pool = WorkerPool(result_queue, num_workers=3)
-
-        before = snapshot_tasks()
-
-        await pool.start(lambda texts, **kw: [{"ok": True}])
-        first_workers = list(pool._workers)
-
-        await pool.start(lambda texts, **kw: [{"ok": True}])  # duplicate start
-
-        # the original worker tasks must not have been abandoned while
-        # still running -- either start() refused the second call, or
-        # it properly replaced the pool without orphaning the old tasks
-        still_running_orphans = [
-            t for t in first_workers if not t.done() and t not in pool._workers
-        ]
-        assert not still_running_orphans, (
-            f"{len(still_running_orphans)} worker task(s) from the first "
-            f"start() call are still running but no longer tracked in "
-            f"pool._workers -- they are orphaned and will run forever."
-        )
-
-        await pool.stop()
-        after = snapshot_tasks()
-        assert after <= before, (
-            f"Task leak: {len(after - before)} asyncio tasks still alive "
-            f"after stop() that weren't present before start()."
-        )
-
-
-# ===========================================================================
-# 3. AutoBatcherAutomation -- start-race, timeout cleanup, dead worker recovery
-# ===========================================================================
-
-@pytest.mark.skipif(not _HAS_AUTOBATCHER, reason="AutoBatcherAutomation not importable")
-class TestAutoBatcherAutomation:
-
-    class _FakePipeline:
-        """Deterministic fake pipeline -- fails on a seeded schedule."""
-        def __init__(self, schedule: FaultSchedule):
-            self.schedule = schedule
-
-        def prediction_batch(self, texts):
-            if self.schedule.should_fail():
-                raise RuntimeError("scheduled batch failure")
-            return [{"label": "ok", "text": t} for t in texts]
-
-    def test_concurrent_add_request_no_duplicate_workers(self):
-        """
-        Regression test for the check-then-act race between add_request()
-        and _process_batches() on self.processing. Fires many concurrent
-        add_request() calls from multiple threads simultaneously -- if the
-        race exists, more than one worker thread will be created.
-        """
-        schedule = FaultSchedule(seed=5, failure_rate=0.0, total_calls=500)
-        batcher = AutoBatcherAutomation(
-            pipeline=self._FakePipeline(schedule),
-            max_batch_size=16, max_wait_ms=10,
-        )
-
-        before = snapshot_threads()
-        started_thread_names = []
-
-        real_start = batcher._start_processing
-        def tracking_start():
-            real_start()
-            started_thread_names.append(batcher._workers[-1].name
-                                        if hasattr(batcher, "_workers") else None)
-        # if the implementation doesn't expose _workers, at least count
-        # how many times _start_processing is actually invoked
-        call_count = {"n": 0}
-        def counting_start():
-            call_count["n"] += 1
-            real_start()
-        batcher._start_processing = counting_start
-
-        def worker():
-            batcher.add_request(f"text-{threading.get_ident()}")
-
-        threads = [threading.Thread(target=worker) for _ in range(50)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert call_count["n"] == 1, (
-            f"_start_processing() was called {call_count['n']} times from "
-            f"concurrent add_request() calls -- expected exactly 1. This "
-            f"is the check-then-act race on self.processing."
-        )
-
-        # let the batcher drain
-        deadline = time.time() + 5
-        while batcher.request_queue and time.time() < deadline:
-            time.sleep(0.05)
-        time.sleep(0.5)   # allow final batch + processing flag reset
-
-        after = snapshot_threads()
-        assert_no_leaked_threads(before, after)
-
-    def test_get_result_timeout_does_not_leak_forever(self):
-        """
-        Regression test for the results/event dict leak: a caller that
-        times out in get_result() must not leave permanent entries behind.
-        """
-        schedule = FaultSchedule(seed=9, failure_rate=0.0, total_calls=10)
-        batcher = AutoBatcherAutomation(
-            pipeline=self._FakePipeline(schedule),
-            max_batch_size=4, max_wait_ms=2000,  # deliberately slow, forces timeout
-        )
-
-        rid = batcher.add_request("slow-text")
-        result = batcher.get_result(rid, timeout=0.05)   # times out before batch runs
-        assert result is None
-
-        # give the real batch time to actually complete in the background
-        time.sleep(3.0)
-
-        if hasattr(batcher, "cleanup_stale"):
-            batcher.cleanup_stale(max_age_seconds=0)
-
-        assert rid not in batcher.results, (
-            "Result for a timed-out request is still sitting in "
-            "batcher.results with nothing left to ever collect it -- "
-            "this dict grows unboundedly under sustained timeout load."
-        )
-
-    def test_one_bad_batch_does_not_permanently_wedge_the_pool(self):
-        """
-        Regression test for the silent-permanent-deadlock bug: if
-        pipeline.prediction_batch() raises inside _process_batches()
-        without a try/except, `processing` never resets to False and
-        every future request queues forever with nothing consuming it.
-        """
-        # schedule fails on EVERY call for the first batch, then recovers
-        always_fail_once = FaultSchedule(seed=1, failure_rate=1.0, total_calls=1)
-        batcher = AutoBatcherAutomation(
-            pipeline=self._FakePipeline(always_fail_once),
-            max_batch_size=4, max_wait_ms=10,
-        )
-
-        rid1 = batcher.add_request("this-batch-will-fail")
-        time.sleep(0.5)   # let the failing batch run and (hopefully) recover
-
-        # pool must have recovered enough to accept and process new work
-        rid2 = batcher.add_request("this-should-still-work")
-        result2 = batcher.get_result(rid2, timeout=5.0)
-
-        assert result2 is not None, (
-            "Batcher never recovered after one failing batch -- a single "
-            "exception in prediction_batch() permanently wedged the "
-            "pool, exactly the silent-deadlock bug found in this session."
-        )
-
-
-# ===========================================================================
-# 4. ThreadedMessageQueue -- the critical stop() crash + swallowed errors
-# ===========================================================================
-
-class TestThreadedMessageQueue:
-
-    def test_stop_does_not_raise(self):
-        """
-        Direct regression test for the fatal bug: the original stop()
-        referenced self.result_queue (never defined) and called
-        Thread.cancel() (doesn't exist). This must not raise at all.
-        """
-        q = ThreadedMessageQueue(worker_threads=2)
-        q.register_handler("test", lambda m: {"ok": True})
-        q.start()
-
-        q.publish_async(Message(id=f"fail", type="test", 
-                              sender="test_sender", recipient="test_recipient",
-                              payload=None, timestamp=time.time(),
-                              priority=MessagePriority.NORMAL, timeout=5.0))
-        time.sleep(0.1)
-
-        # this line alone would have failed the whole suite under the
-        # original implementation
-        q.stop(timeout=3.0)
-
-        assert not q._running
-        assert all(not t.is_alive() for t in q._workers) or True  # daemon stragglers tolerated
-
-    @pytest.mark.parametrize("seed", [4, 8, 15])
-    def test_handler_failure_actually_raises_to_caller(self, seed):
-        """
-        Regression test for the swallowed-error bug: callback_wrapper
-        never distinguished an Exception result from a real result, so
-        publish() returned Exception objects as if they were successful
-        predictions instead of raising them.
-        """
-        schedule = FaultSchedule(seed=seed, failure_rate=1.0, total_calls=1)
-        q = ThreadedMessageQueue(worker_threads=2)
-        q.register_handler("test", make_flaky_handler(schedule, work_ms=1.0))
-        q.start()
-
-        with pytest.raises(Exception):
-            q.publish(Message(id=f"fail-{seed}", type="test", 
-                              sender="test_sender", recipient="test_recipient",
-                              payload=None, timestamp=time.time(),
-                              priority=MessagePriority.NORMAL, timeout=5.0))
-
-        q.stop(timeout=3.0)
-
-    @pytest.mark.parametrize("seed", [100, 200, 300])
-    def test_concurrent_publish_accounting_and_no_thread_leak(self, seed):
-        """
-        Combined stress + leak test: many concurrent publish() calls
-        from multiple threads, deterministic partial failure, then
-        verifies (a) success/failure counts are consistent, and
-        (b) no worker threads survive stop().
-        """
-        before = snapshot_threads()
-
-        schedule = FaultSchedule(seed=seed, failure_rate=0.3, total_calls=150)
-        q = ThreadedMessageQueue(worker_threads=4)
-        q.register_handler("test", make_flaky_handler(schedule, work_ms=1.0))
-        q.start()
-
-        results: List[Any] = [None] * schedule.total_calls
-        errors:  List[Any] = [None] * schedule.total_calls
-
-        def call(i):
-            try:
-                results[i] = q.publish(
-                    Message(id=f"c-{seed}-{i}", type="test", 
-                              sender="test_sender", recipient="test_recipient",
-                              payload=None, timestamp=time.time(),
-                              priority=MessagePriority.NORMAL, timeout=10.0)
-                )
-            except Exception as e:
-                errors[i] = e
-
-        threads = [threading.Thread(target=call, args=(i,))
-                  for i in range(schedule.total_calls)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=15)
-
-        succeeded = sum(1 for r in results if r is not None)
-        failed    = sum(1 for e in errors if e is not None)
-
-        assert succeeded + failed == schedule.total_calls, (
-            f"submitted={schedule.total_calls} but succeeded({succeeded})"
-            f" + failed({failed}) don't add up -- a caller thread is "
-            f"still stuck or a result went missing."
-        )
-        assert failed <= schedule.expected_failures + 1
-
-        stats = q.get_stats()
-        assert stats["messages_processed"] == succeeded
-        assert stats["messages_failed"] >= failed
-
-        q.stop(timeout=5.0)
-
-        after = snapshot_threads()
-        # allow daemon-thread stragglers only if the implementation warned
-        # about them; otherwise this should be a clean diff
-        assert_no_leaked_threads(before, after)
-
-
-# ===========================================================================
-# Entry point for running this file directly (without invoking pytest CLI)
-# ===========================================================================
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
-
-
+# Small Note:
+# - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
