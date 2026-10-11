@@ -81,7 +81,7 @@ main_prediction = PipelinePredictionManager(
 # window_size: the number of past days you want to use for training and prediction, in this case we use 30 days.
 # horizon: the number of days you want to predict into the future, in this case we use 5 days.
 X, y, config = main_prediction.prepare_dataset(daily, feature_cols, target_col_name="PJME_MW",
-                                      window_size=30, horizon=5)
+                                      window_size=30, horizon=8)
 
 # activate explainability capability to explain uncertainty:
 main_model.show_explainability_details = True
