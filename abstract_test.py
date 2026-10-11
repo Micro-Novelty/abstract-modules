@@ -628,7 +628,7 @@ train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
 
 transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y,
 label_map=label_map, # Label map can be inserted in here, or you Can set this to None,
-                     if set to None this function will only returns Transformer prob and attn_weights.
+                     # if set to None this function will only returns Transformer prob and attn_weights.
 memory_metric='euclidean',
 training=False) # for returning kNN Transformer probabilities and attention weights only.
 # Note: - train_mode can be set to 'dynamic_backward' if you have very large dataset, this makes Transformer Q, K, V be much more dynamic and grants flexible learning behavior for large dataset.
