@@ -608,8 +608,8 @@ secret_key=secret_key, client_ip=None) # you can add client_ip to provide a robu
 # for better and faster advanced prediction when using titles and rules, consider using advanced batch prediction like in the above example
 
 
- # Initialize kNN Transformer:
- knn_tf = sec_main_prediction.initialize_knn_transformer(
+# Initialize kNN Transformer:
+knn_tf = sec_main_prediction.initialize_knn_transformer(
   vocab_size=1, task='<your_task>', num_classes=num_classes, d_model=32,
   n_heads=4, n_features=len(feature_cols), # pass len(feature_cols) if your task is regression, set to None if classification
   memory_capacity=10000,
@@ -628,12 +628,12 @@ train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
 
 transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y,
 label_map=label_map, # Label map can be inserted in here, or you Can set this to None,
-                       if set to None this function will only returns Transformer prob and attn_weights.
+                     if set to None this function will only returns Transformer prob and attn_weights.
 memory_metric='euclidean',
 training=False) # for returning kNN Transformer probabilities and attention weights only.
 # Note: - train_mode can be set to 'dynamic_backward' if you have very large dataset, this makes Transformer Q, K, V be much more dynamic and grants flexible learning behavior for large dataset.
-       # - train_mode can be set to 'fixed_backward' if you have small dataset, this makes Transformer Q, K, V to stay frozen so the FFN flow will handle the Training, making Learning in very little samples possible and deterministic in behavior.
-       # - y sample must be one-hot encoded manually before its passed to the function, since the function above will not automatically one-hot encode the y-sample.
+     # - train_mode can be set to 'fixed_backward' if you have small dataset, this makes Transformer Q, K, V to stay frozen so the FFN flow will handle the Training, making Learning in very little samples possible and deterministic in behavior.
+     # - y sample must be one-hot encoded manually before its passed to the function, since the function above will not automatically one-hot encode the y-sample.
 
 # ==== SAVING MEMORY BLOCK =====
 main_prediction.pipeline.storage.save_hnsw_memory(memory_name) # This function saves the HNSW setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
@@ -657,10 +657,10 @@ from AbstractIntegratedModule import snn_predict
 
 X = main_model._safe_to_2d_float(X)
 encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passed samples and Training epochs
-  batch_size=32, n_steps=20, # n number of steps for Input encoding for Noise robustness, higher steps, higher robustness from Noise.
-  n_hidden=64, lr=2e-3,  # pass hidden layers (n_hidden) for the SNN Network, and learning rate for the SNN network.
-  pretrain_steps=200, unsupervised_stdp=False # pretrain steps can be set to 0 if unsupervised_std is set to False (This is for STDP Unsupervised leearning for the SNN before BPTT Training in order to shape better Weights)
-  )
+batch_size=32, n_steps=20, # n number of steps for Input encoding for Noise robustness, higher steps, higher robustness from Noise.
+n_hidden=64, lr=2e-3,  # pass hidden layers (n_hidden) for the SNN Network, and learning rate for the SNN network.
+pretrain_steps=200, unsupervised_stdp=False # pretrain steps can be set to 0 if unsupervised_std is set to False (This is for STDP Unsupervised leearning for the SNN before BPTT Training in order to shape better Weights)
+)
 # This function already includes diagnostic modules for the Whole SNN network to give you a Clearer picture of the SNN Condition before Prediction.
 # Very High Dead neurons is a sign of Bad development, consider to Increase hidden layers or learning rate in order for the Model to improve.
 
