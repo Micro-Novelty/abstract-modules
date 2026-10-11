@@ -346,8 +346,42 @@ config = SecurityConfig(
 # pass the PipelinePredictionManager of yours (main_prediction in this case), and the IntegratedPipeline of yours (here its main_model), 
 # the SecurityConfig as config, and the api_key as api_key, and the max_workers of 4, more worker, means more concurrent requests (changeable), 
 # the task_timeout as 30 (changeable), and the max_retries as 3 (changeable).
-wrapper = PipelineAsyncManager(main_model, 
-         main_prediction, 
+sec_memory_name = 'agent-2'
+sec_main_model = IntegratedPipeline(
+   memory_name=sec_memory_name,  # memory name for the AI you already initialized
+   use_async=True, # local asynchronous prediction is permitted, if not PipelineAsyncManager wont start asynchronous prediction.
+   agent_port=5002, # this port is used to set AgentDistributedInference server (optional)
+   ssl_cert_file=None, ssl_key_file=None,# provide your cert_file path or key_file path (optional)
+   ssl_context=None, # used by the Agent server. (optional)
+   client_ssl_context=None # used by the client. (optional)
+   ) 
+
+
+sec_main_prediction = PipelinePredictionManager(
+   sec_main_model, # your initialized pipeline
+   label_csv='energy_training.txt', 
+   # your filename that contains the csv and contains the CSV format.
+   # the Agent will automatically searched the nearby folder like: downloads, data, and desktop folder.
+   target_title='window_title', label='label')
+
+titles, _, sec_label_map = main_prediction.load_labels_from_csv(
+   'energy_training.txt',  # the name of your .txt file with CSV format.
+   'window_title', 'label')
+
+sec_main_model.initialize_mlp_model(titles=test_titles, rules=rules, label_map=sec_label_map, input_dim=input_dim, output_dim=num_classes, hidden_layers=[12, 17, 35], use_qat=False, qcfg=None)
+
+sec_main_model.initialize_transformer_model(titles=test_titles, rules=rules, label_map=sec_label_map, vocab_size=1, num_classes=num_classes, d_model=128, n_heads=4, n_features=len(feature_cols),
+                                                attn_dropout=0.1, ffn_dropout=0.05, weight_decay=1e-4, task='regression')
+
+sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=sec_label_map, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
+sec_main_model.train_mlp_model(titles=test_titles, rules=rules, label_map=sec_label_map, X=X, y=y, task='regression', train_epochs=500, momentum=0.9, lr=0.01)
+sec_main_model.train_transformer(titles=test_titles, rules=rules, label_map=sec_label_map, X=X, y=y,  task='regression', d_model=128, train_epochs=10, 
+                                    mode='dynamic_backward', lr=0.5, batch_size=4)
+sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=sec_label_map, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
+
+
+wrapper = PipelineAsyncManager(sec_main_model, 
+         sec_main_prediction, 
          config=config, 
          state_file=None, 
          security_level=SecurityLevel.PRODUCTION,
@@ -375,7 +409,7 @@ wrapper.start(method='Transformer_included', bootstrap_token=None)
 
 # IMPORTANT NOTE: the async_predict variable will return all the prediction results, prediction success, failures, so you can directly see how the model predicts each batch of the given sample.
 
-payloads = {'test_titles': test_titles, 'label_map': label_map, 'rules': rules, 'use_transformer': True}
+payloads = {'test_titles': None, 'label_map': sec_label_map, 'rules': None, 'use_transformer': True}
 async_predict = wrapper.prediction_method(payloads, X, y_samples=y, chunk_size=1000,
                  max_predictions=3, task="auto", timeout=1000,
                  api_key=api_key, client_ip=None, overall_timeout=20000,
