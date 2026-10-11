@@ -11,7 +11,7 @@ from AbstractIntegratedModule import QuantConfig
 import numpy as np
 import pandas as pd
 import asyncio
-
+import traceback
 # SETUP BLOCK.
 memory_name = 'agent_1_memory'
 
@@ -355,7 +355,7 @@ wrapper = PipelineAsyncManager(main_model,
          max_workers=4, 
          task_timeout=30, 
          max_retries=3 )
-'''
+
 # NOTE:
 # start the PipelineAsyncManager event loop, this will start the asynchronous prediction event loop and allow you to make predictions without blocking the main thread.
 # set method to 'Transformer_included' if you want to use the Transformer model for prediction (Only one option, not changeable).
@@ -382,7 +382,6 @@ async_predict = wrapper.prediction_method(payloads, X, y_samples=y, chunk_size=1
                  stop_on_error=False)
 
 print(f'[=] Results: {async_predict}')
-'''
 
 
 # Peer-to-Peer (P2P) Deployment Block: This is where you set up the CohesiveAgentDeployment for peer-to-peer deployment, this will allow you to deploy the model on multiple agents and allows them to communicate with each other for distributed inference.
