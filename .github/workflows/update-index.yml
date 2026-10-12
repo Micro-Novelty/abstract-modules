@@ -1,7 +1,7 @@
 name: Update pip index # pip index html update.
 on:
   release: #release
-    types: [published] # publish type
+    types: [published] # publish type,
   workflow_dispatch: #workflow
   push: #
     branches:
