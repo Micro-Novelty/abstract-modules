@@ -64,6 +64,15 @@ main_model = IntegratedPipeline(
    client_ssl_context=None # used by the client. (optional)
    ) 
 
+sec_main_model = IntegratedPipeline(
+   memory_name='agent_2',  # memory name for the AI you already initialized
+   use_async=True, # local asynchronous prediction is permitted, if not PipelineAsyncManager wont start asynchronous prediction.
+   agent_port=5009, # this port is used to set AgentDistributedInference server (optional)
+   ssl_cert_file=None, ssl_key_file=None,# provide your cert_file path or key_file path (optional)
+   ssl_context=None, # used by the Agent server. (optional)
+   client_ssl_context=None # used by the client. (optional)
+   ) 
+
 
 main_prediction = PipelinePredictionManager(
    main_model, # your initialized pipeline
@@ -409,7 +418,7 @@ wrapper.start(method='Transformer_included', bootstrap_token=None)
 
 # IMPORTANT NOTE: the async_predict variable will return all the prediction results, prediction success, failures, so you can directly see how the model predicts each batch of the given sample.
 
-payloads = {'test_titles': None, 'label_map': sec_label_map, 'rules': None, 'use_transformer': True}
+payloads = {'test_titles': test_titles, 'label_map': sec_label_map, 'rules': rules, 'use_transformer': True}
 async_predict = wrapper.prediction_method(payloads, X, y_samples=y, chunk_size=1000,
                  max_predictions=3, task="auto", timeout=1000,
                  api_key=api_key, client_ip=None, overall_timeout=20000,
@@ -466,7 +475,7 @@ async def agent_test(task='classification'):
    # Agent 2 - Secondary (Port 5556)
    # same integratedpipeline model and main_prediction model, or you can set a different/second IntegratedPipeline and PipelinePredictionManager here (Changeable).
    agent2 = CohesiveAgentDeployment(
-      pipeline=main_model,
+      pipeline=sec_main_model,
       memory_name="agent_secondary",
       filename=filename,
       target_title='window_title',
@@ -687,17 +696,29 @@ main_model.storage.load_target_memory_row(memory_name) # load target memory row 
 
 from AbstractIntegratedModule import train_snn_network
 from AbstractIntegratedModule import snn_predict
+from AbstractIntegratedModule import initialize_snn_network
 
-X = main_model._safe_to_2d_float(X)
-encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50, # passed samples and Training epochs
-batch_size=32, n_steps=20, # n number of steps for Input encoding for Noise robustness, higher steps, higher robustness from Noise.
-n_hidden=64, lr=2e-3,  # pass hidden layers (n_hidden) for the SNN Network, and learning rate for the SNN network.
-pretrain_steps=200, unsupervised_stdp=False # pretrain steps can be set to 0 if unsupervised_std is set to False (This is for STDP Unsupervised leearning for the SNN before BPTT Training in order to shape better Weights)
-)
+# if your X samples (for regression and classification) has large values, consider re-scaling your X samples to lower range to [-1, 1] to prevent Exploding gradients.
+# X = main_model._safe_to_2d_float(X) if your X samples has len(shape) > 2
+
+# n_hidden and seed can be changed and flexible.
+# X, y, and label map is a must samples to pass.
+net, hidden_layer, utility = initialize_snn_network(X, y, sec_label_map, n_hidden=64, seed=42)
+
+encoder, net, reports, warnings = train_snn_network(X=X, y=y, epochs=50,
+      net=net, hidden_layer=hidden_layer, task='regression', # pass your net, hidden_layer and task (can be classification and regression)
+      batch_size=32, n_steps=20, # n number of steps for Input encoding for Noise robustness, higher steps, higher robustness from Noise.
+      n_hidden=64, lr=2e-3,  # pass hidden layers (n_hidden) for the SNN Network (n_hidden must match the previous initialized n_hidden), and learning rate for the SNN network.
+      pretrain_steps=200, unsupervised_stdp=False # pretrain steps can be set to 0 if unsupervised_std is set to False (This is for STDP Unsupervised leearning for the SNN before BPTT Training in order to shape better Weights)
+      )
 # This function already includes diagnostic modules for the Whole SNN network to give you a Clearer picture of the SNN Condition before Prediction.
 # Very High Dead neurons is a sign of Bad development, consider to Increase hidden layers or learning rate in order for the Model to improve.
 
-results = snn_predict(X=X, y=y, label_map=label_map, encoder=encoder, net=net)
+# x must be a two dimensional sample, if X.ndim > 2, consider reshaping the X to be a 2D sample safely.
+results = snn_predict(X=X, y=y, task='regression', label_map=label_map, encoder=encoder, net=net)
+# net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
+# Small Note:
+# - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
 # net is the SNNNetwork Class, and Encoder is PoissonEncoder, both are required for Prediction and must be passed in this function, consider saving the SNN net and the encoder using json for later use.
 # Small Note:
 # - This architecture is not guaranteed to work best for Classifying tabular datas, its good for time series event based activity classification.
