@@ -1,4 +1,6 @@
 # [=] Abstract-modules Wheels provider
+
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/abstractintegratedmodule?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/abstractintegratedmodule)
 ### [=] Introduction:
 - abstract-modules repository provides the New AbstractIntegratedModule wheels download URL dedicated to allow Users to Download the latest version of the library, supports multi-platform architecture, ranging from python version 3.10 -> 3.12.
 - This repository also Provides Python Wheels for:
