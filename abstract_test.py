@@ -16,6 +16,7 @@ import traceback
 # pipeline_setup.py
 from AbstractIntegratedModule import set_memory
 from AbstractIntegratedModule import save_memory
+from AbstractIntegratedModule import get_dataset
 from sklearn.datasets import make_classification
 
 # db_path is your custom initialized sqlite database name (ex: data_storage.db)
