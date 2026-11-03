@@ -398,16 +398,16 @@ sec_main_prediction = PipelinePredictionManager(
    target_title='window_title', label='label')
 
 
-sec_main_model.initialize_mlp_model(titles=test_titles, rules=rules, label_map=None, input_dim=input_dim, output_dim=num_classes, hidden_layers=[12, 17, 35], use_qat=False, qcfg=None)
+sec_main_model.initialize_mlp_model(titles=test_titles, rules=rules, label_map=label_map, input_dim=None, output_dim=None, hidden_layers=[12, 17, 35], use_qat=False, qcfg=None)
 
-sec_main_model.initialize_transformer_model(titles=test_titles, rules=rules, label_map=None, vocab_size=1, num_classes=num_classes, d_model=128, n_heads=4, n_features=len(feature_cols),
+sec_main_model.initialize_transformer_model(titles=test_titles, rules=rules, label_map=label_map, vocab_size=1, num_classes=None, d_model=128, n_heads=4, n_features=None,
                                                 attn_dropout=0.1, ffn_dropout=0.05, weight_decay=1e-4, task='regression')
 
-sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=None, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
-sec_main_model.train_mlp_model(titles=test_titles, rules=rules, label_map=None, X=X, y=y, task='regression', train_epochs=500, momentum=0.9, lr=0.01)
-sec_main_model.train_transformer(titles=test_titles, rules=rules, label_map=None, X=X, y=y,  task='regression', d_model=128, train_epochs=10, 
+sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=label_map, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
+sec_main_model.train_mlp_model(titles=test_titles, rules=rules, label_map=label_map, X=X, y=y, task='regression', train_epochs=500, momentum=0.9, lr=0.01)
+sec_main_model.train_transformer(titles=test_titles, rules=rules, label_map=label_map, X=X, y=y,  task='regression', d_model=128, train_epochs=10, 
                                     mode='dynamic_backward', lr=0.5, batch_size=4)
-sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=None, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
+sec_main_model.train_lstm(titles=test_titles, rules=rules, label_map=label_map, raw_X=X, raw_Y=y, n_train=0.8, n_display=5, train_epochs=10, lr=0.1)
 
 
 wrapper = PipelineAsyncManager(sec_main_model, 
@@ -464,7 +464,7 @@ agent_2_id = 'ID-02'
 
 
 # function must be 'async' to use the await syntaxes below:
-async def agent_test(task='classification'):
+async def agent_test(task='classification', x=None, y=None):
 
    # NOTE:
    # shared_auth_token : the secret_key you have alread made
@@ -527,9 +527,9 @@ async def agent_test(task='classification'):
       print(f"\n🔑 Using API Key: {api_key[:20]}...")
 
       # first payload for agent-1:
-      payloads_1 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":None, "y":None, "use_transformer": True, "agent_id": agent_1_id}
+      payloads_1 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":X, "y":y, "use_transformer": True, "agent_id": agent_1_id}
       # second payload for agent-2:
-      payloads_2 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":None, "y":None, "use_transformer": True, "agent_id": agent_2_id}
+      payloads_2 = {"test_titles": test_titles, "label_map": label_map, "rules": rules, "X":X, "y":y, "use_transformer": True, "agent_id": agent_2_id}
 
       # NOTE:
       # daily: is the dataframe/dataset you have loaded, if its present meaning You can use it in P2P using this setup for regression prediction:
@@ -588,8 +588,8 @@ async def agent_test(task='classification'):
 
 
 # Initiate agent_test
-asyncio.run(agent_test(task='classification'))
-
+asyncio.run(agent_test(task='classification', X=s_X, y=s_y))
+asyncio.run(agent_test(task='regression', X=X, y=y))
 
 # Step 2
 from AbstractIntegratedModule import PipelineAsyncManager
