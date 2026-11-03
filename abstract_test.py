@@ -232,9 +232,10 @@ else:
     train_run(f_db_path, X, y, task='classification', pred_config=None, 
                                             label_csv='ManualsTraining.txt', feature_cols=None)
     train_run(f_db_path, s_X, s_y, task='regression', pred_config=config, 
-                                label_csv='energy_training.txt', feature_cols=feature_cols)
+                                label_csv=None, feature_cols=feature_cols)
 
     results, chosen_label, confidence = one_run(f_db_path, s_X, s_y, with_training=False)
+    results, chosen_label, confidence = one_run(f_db_path, X, y, with_training=False)
 
 
 
@@ -872,13 +873,13 @@ print(f'[=] Results: {async_predict}')
 print('[==] Initiating advanced batch prediction')
 predicted_output = async_manager.advanced_batch_prediction(test_titles, label_map, example_rules, 
 X=None, y=None, # provide your initialized X and y samples (Also Optional, can be set to None)
-secret_key=secret_key, client_ip=None) # you can add client_ip to provide a robust authentication paired with secret_key
+api_key=secret_key, client_ip=None) # you can add client_ip to provide a robust authentication paired with secret_key
 # for better and faster advanced prediction when using titles and rules, consider using advanced batch prediction like in the above example
 
 
 # Initialize kNN Transformer:
 knn_tf = sec_main_prediction.initialize_knn_transformer(
-  vocab_size=1, task='<your_task>', num_classes=num_classes, d_model=32,
+  vocab_size=1, task='classification', num_classes=num_classes, d_model=32,
   n_heads=4, n_features=len(feature_cols), # pass len(feature_cols) if your task is regression, set to None if classification
   memory_capacity=10000,
   memory_k=5, memory_metric='euclidian')
@@ -891,20 +892,19 @@ knn_tf = sec_main_prediction.initialize_knn_transformer(
 # knn_forward_inference() lives inside PipelinePredictionManager, so you need to call this class to initiate the knn_forward_inference() function.
 losses, accs, _ = main_prediction.knn_forward_inference(X, y,
 label_map=None, # Label map can be safely set to None during Training phase.
-memory_metric='euclidean', training=True, batch_size=2,
+task='classification', training=True, batch_size=2,
 train_mode='dynamic_backward', lr=0.1) # for Training kNN Transformer only
 
 transformer_probs, attn_weights, prediction = main_prediction.knn_forward_inference(X, y,
 label_map=label_map, # Label map can be inserted in here, or you Can set this to None,
                      # if set to None this function will only returns Transformer prob and attn_weights.
-memory_metric='euclidean',
+task='classification',
 training=False) # for returning kNN Transformer probabilities and attention weights only.
 # Note: - train_mode can be set to 'dynamic_backward' if you have very large dataset, this makes Transformer Q, K, V be much more dynamic and grants flexible learning behavior for large dataset.
      # - train_mode can be set to 'fixed_backward' if you have small dataset, this makes Transformer Q, K, V to stay frozen so the FFN flow will handle the Training, making Learning in very little samples possible and deterministic in behavior.
      # - y sample must be one-hot encoded manually before its passed to the function, since the function above will not automatically one-hot encode the y-sample.
 
 # ==== SAVING MEMORY BLOCK =====
-main_prediction.pipeline.storage.save_hnsw_memory(memory_name) # This function saves the HNSW setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
 main_prediction.pipeline.storage.save_memory_head(memory_name) # This function saves the Per-Head memory setup inside KNNAugmentedTransformer class to the the same database (activity_log.db) so it can be retrieved as Retrievable Memory later.
 
 # Get binary blob to save target memory:
@@ -913,7 +913,6 @@ main_model.storage.save_target_memory_row(memory_name, blob) # Save target memor
 
 
 # === LOADING MEMORY BLOCK ===
-main_prediction.pipeline.storage.load_hnsw_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
 main_prediction.pipeline.storage.load_head_memory_setup(memory_name) # This function is used to load the saved HNSW Memory inside your (activity_log.db) database, and automatically apply the Old Memory back to the knn-augmented Transformer.
 main_model.storage.load_target_memory_row(memory_name) # load target memory row for kNN Transformer
 
