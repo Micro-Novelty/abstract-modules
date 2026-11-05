@@ -8,29 +8,26 @@ on:
     types: [published]
   workflow_dispatch:
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared defaults
-# ─────────────────────────────────────────────────────────────────────────────
 defaults:
   run:
     shell: bash
 
 env:
-  # Bump here to pick up the fix everywhere (linux + macOS)
   TEST_DEPS: "scikit-learn aiohttp psutil pandas cryptography pytest pytest-asyncio"
 
 jobs:
   # ───────────────────────────────────────────────
-  # Step 1: Fetch latest release wheel URLs
+  # Step 1: Fetch latest release asset URLs
   # ───────────────────────────────────────────────
   get-release:
     name: Fetch Latest Release Metadata
     runs-on: ubuntu-latest
     outputs:
       wheel_urls: ${{ steps.fetch.outputs.wheel_urls }}
+      sdist_urls: ${{ steps.fetch.outputs.sdist_urls }}
       tag: ${{ steps.fetch.outputs.tag }}
     steps:
-      - name: Fetch latest release wheel URLs
+      - name: Fetch latest release asset URLs
         id: fetch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,14 +38,22 @@ jobs:
           TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-          URLS=$(
+          WHEELS=$(
             echo "$RELEASE_JSON" \
             | jq -c '[.assets[] | select(.name | endswith(".whl")) | .browser_download_url] | .[0:10]'
           )
-          echo "wheel_urls=$URLS" >> "$GITHUB_OUTPUT"
+          echo "wheel_urls=$WHEELS" >> "$GITHUB_OUTPUT"
+
+          SDISTS=$(
+            echo "$RELEASE_JSON" \
+            | jq -c '[.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url] | .[0:5]'
+          )
+          echo "sdist_urls=$SDISTS" >> "$GITHUB_OUTPUT"
 
           echo "Found wheels for $TAG:"
-          echo "$URLS" | jq -r '.[]'
+          echo "$WHEELS" | jq -r '.[]'
+          echo "Found tarballs for $TAG:"
+          echo "$SDISTS" | jq -r '.[]'
 
   # ───────────────────────────────────────────────
   # Step 2a: Linux — native runners per arch
@@ -63,11 +68,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest       # GitHub-hosted x86_64
+          - runner: ubuntu-latest
             runner_arch: x86_64
             wheel_arch: x86_64
             docker_platform: linux/amd64
-          - runner: ubuntu-24.04-arm   # GitHub-hosted native ARM64
+          - runner: ubuntu-24.04-arm
             runner_arch: aarch64
             wheel_arch: aarch64
             docker_platform: linux/arm64
@@ -91,7 +96,6 @@ jobs:
           for URL in $(echo "$WHEEL_URLS" | jq -r '.[]'); do
             FILENAME="${URL##*/}"
 
-            # ── arch filter ───────────────────────────────────────────────
             if [[ "$FILENAME" != *"linux"* ]]; then
               echo "⏭  Skipping non-Linux wheel: $FILENAME"
               continue
@@ -112,20 +116,16 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "Testing: $FILENAME"
 
-            # ── Python version ────────────────────────────────────────────
             PY_TAG=$(echo "$FILENAME" | grep -oE 'cp3[0-9]+' | head -1)
-            PY_MINOR="${PY_TAG#cp}"                      # e.g. 310
-            PY_VERSION="${PY_MINOR:0:1}.${PY_MINOR:1}"  # e.g. 3.10
+            PY_MINOR="${PY_TAG#cp}"
+            PY_VERSION="${PY_MINOR:0:1}.${PY_MINOR:1}"
             echo "Python: $PY_VERSION"
 
-            # ── Docker image & install extras ─────────────────────────────
             IMG_ARCH="$( [[ "$IS_ARM" == "true" ]] && echo "aarch64" || echo "x86_64" )"
 
             if [[ "$FILENAME" == *"musllinux"* ]]; then
               IMAGE="python:${PY_VERSION}-alpine"
               PYBIN="python"
-              # g++ is required by scikit-learn's Meson build (and anything
-              # that compiles C++ extensions); gcc covers pure-C packages.
               INSTALL_EXTRA="apk add --no-cache curl gcc g++ musl-dev libffi-dev make linux-headers && "
             else
               GLIBC=$(echo "$FILENAME" | grep -oE 'manylinux_[0-9]+_[0-9]+' | head -1 || echo "manylinux_2_28")
@@ -137,7 +137,6 @@ jobs:
             echo "Image:    $IMAGE"
             echo "Platform: $DOCKER_PLATFORM"
 
-            # ── Download ──────────────────────────────────────────────────
             if ! curl -fsSL --retry 3 --retry-delay 5 -o "$FILENAME" "$URL"; then
               echo "❌ Download failed: $URL"
               FAILED=$((FAILED + 1))
@@ -145,7 +144,6 @@ jobs:
             fi
             echo "Downloaded $(du -sh "$FILENAME" | cut -f1)"
 
-            # ── Run in container ──────────────────────────────────────────
             INSTALL_CMD="${INSTALL_EXTRA}${PYBIN} -m pip install --upgrade pip --quiet \
               && ${PYBIN} -m pip install ./${FILENAME} \
               && ${PYBIN} -m pip install ${TEST_DEPS} --quiet \
@@ -166,7 +164,6 @@ jobs:
             rm -f "$FILENAME"
           done
 
-          # ── Summary ───────────────────────────────────────────────────────
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Linux $WHEEL_ARCH — tested: $TESTED | failed: $FAILED"
@@ -175,11 +172,6 @@ jobs:
 
   # ───────────────────────────────────────────────
   # Step 2b: macOS — native runners per arch
-  #
-  # macos-13 (x86_64) has limited GitHub capacity
-  # and may queue for hours; continue-on-error:true
-  # prevents it from blocking the gate. Remove that
-  # flag if x86_64 coverage must be mandatory.
   # ───────────────────────────────────────────────
   test-macos:
     name: "Test macOS (${{ matrix.arch }})"
@@ -191,15 +183,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13        # x86_64 — limited capacity, may queue
+          - os: macos-15-intel   # x86_64 (replaces retired macos-13)
             arch: x86_64
-            continue_on_error: true
-          - os: macos-latest    # arm64 — plentiful capacity
+          - os: macos-latest     # arm64
             arch: arm64
-            continue_on_error: false
 
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.continue_on_error }}
 
     steps:
       - name: Checkout repository
@@ -232,74 +221,4 @@ jobs:
             if [[ "$FILENAME" != *"macosx"* ]]; then
               echo "⏭  Skipping non-macOS wheel: $FILENAME"; continue
             fi
-            if [[ "$FILENAME" != *"$ARCH"* ]]; then
-              echo "⏭  Skipping wrong-arch wheel ($ARCH): $FILENAME"; continue
-            fi
-
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "Testing: $FILENAME"
-
-            PY_TAG=$(echo "$FILENAME" | grep -oE 'cp3[0-9]+' | head -1)
-            PY_MINOR="${PY_TAG#cp}"
-            PY_VERSION="${PY_MINOR:0:1}.${PY_MINOR:1}"
-            PYBIN="python$PY_VERSION"
-            echo "Python: $PY_VERSION"
-
-            if ! command -v "$PYBIN" &>/dev/null; then
-              echo "❌ $PYBIN not found on this runner"
-              FAILED=$((FAILED + 1))
-              continue
-            fi
-            echo "Using: $PYBIN ($($PYBIN --version))"
-
-            if ! curl -fsSL --retry 3 --retry-delay 5 -o "$FILENAME" "$URL"; then
-              echo "❌ Download failed: $URL"
-              FAILED=$((FAILED + 1))
-              continue
-            fi
-            echo "Downloaded $(du -sh "$FILENAME" | cut -f1)"
-
-            $PYBIN -m pip install --upgrade pip --quiet
-            $PYBIN -m pip install "./$FILENAME"
-            $PYBIN -m pip install $TEST_DEPS --quiet
-
-            if $PYBIN abstract_test.py; then
-              echo "✅ PASSED: $FILENAME"
-              TESTED=$((TESTED + 1))
-            else
-              echo "❌ FAILED: $FILENAME"
-              FAILED=$((FAILED + 1))
-            fi
-
-            rm -f "$FILENAME"
-          done
-
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "macOS $ARCH — tested: $TESTED | failed: $FAILED"
-          [[ $TESTED -gt 0 ]]  || { echo "❌ No wheels were found or tested!"; exit 1; }
-          [[ $FAILED -eq 0 ]]  || exit 1
-
-  # ───────────────────────────────────────────────
-  # Gate — requires both Linux and macOS to pass
-  # ───────────────────────────────────────────────
-  all-passed:
-    name: All wheel tests passed
-    needs: [test-linux, test-macos]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Check results
-        run: |
-          LINUX="${{ needs.test-linux.result }}"
-          MACOS="${{ needs.test-macos.result }}"
-          echo "Linux jobs : $LINUX"
-          echo "macOS jobs : $MACOS"
-          # macos-13 (x86_64) uses continue-on-error so its failures surface
-          # as 'success' at the job level — only true infra failures propagate.
-          if [[ "$LINUX" != "success" || "$MACOS" != "success" ]]; then
-            echo "❌ One or more wheel tests FAILED."
-            exit 1
-          fi
-          echo "✅ All wheel tests passed."
+            if [[ "$FILENAME" != *"$ARCH"* &&
