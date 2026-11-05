@@ -218,7 +218,179 @@ jobs:
           for URL in $(echo "$WHEEL_URLS" | jq -r '.[]'); do
             FILENAME="${URL##*/}"
 
-            if [[ "$FILENAME" != *"macosx"* ]]; then
-              echo "⏭  Skipping non-macOS wheel: $FILENAME"; continue
+            # case statements are safe on macOS's bash 3.2
+            case "$FILENAME" in
+              *macosx*) ;;
+              *)
+                echo "⏭  Skipping non-macOS wheel: $FILENAME"
+                continue
+                ;;
+            esac
+
+            case "$FILENAME" in
+              *"$ARCH"*|*universal2*) ;;   # arch matches, or universal2: test it
+              *)
+                echo "⏭  Skipping wrong-arch wheel ($ARCH): $FILENAME"
+                continue
+                ;;
+            esac
+
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Testing: $FILENAME"
+
+            PY_TAG=$(echo "$FILENAME" | grep -oE 'cp3[0-9]+' | head -1)
+            PY_MINOR="${PY_TAG#cp}"
+            PY_VERSION="${PY_MINOR:0:1}.${PY_MINOR:1}"
+            PYBIN="python$PY_VERSION"
+            echo "Python: $PY_VERSION"
+
+            if ! command -v "$PYBIN" &>/dev/null; then
+              echo "❌ $PYBIN not found on this runner"
+              FAILED=$((FAILED + 1))
+              continue
             fi
-            if [[ "$FILENAME" != *"$ARCH"* &&
+            echo "Using: $PYBIN ($($PYBIN --version))"
+
+            if ! curl -fsSL --retry 3 --retry-delay 5 -o "$FILENAME" "$URL"; then
+              echo "❌ Download failed: $URL"
+              FAILED=$((FAILED + 1))
+              continue
+            fi
+            echo "Downloaded $(du -sh "$FILENAME" | cut -f1)"
+
+            # Fresh venv per wheel (Homebrew Python is PEP 668 "externally managed")
+            VENV=".venv-$PY_MINOR"
+            rm -rf "$VENV"
+            "$PYBIN" -m venv "$VENV"
+            VPY="$VENV/bin/python"
+
+            "$VPY" -m pip install --upgrade pip --quiet
+            "$VPY" -m pip install "./$FILENAME"
+            "$VPY" -m pip install $TEST_DEPS --quiet
+
+            if "$VPY" abstract_test.py; then
+              echo "✅ PASSED: $FILENAME"
+              TESTED=$((TESTED + 1))
+            else
+              echo "❌ FAILED: $FILENAME"
+              FAILED=$((FAILED + 1))
+            fi
+
+            rm -rf "$FILENAME" "$VENV"
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "macOS $ARCH — tested: $TESTED | failed: $FAILED"
+          [[ $TESTED -gt 0 ]]  || { echo "❌ No wheels were found or tested!"; exit 1; }
+          [[ $FAILED -eq 0 ]]  || exit 1
+
+  # ───────────────────────────────────────────────
+  # Step 2c: Source tarball (sdist) — skips wheels
+  # ───────────────────────────────────────────────
+  test-sdist:
+    name: "Test sdist (py${{ matrix.python }})"
+    needs: get-release
+    if: needs.get-release.outputs.sdist_urls != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Test source tarballs
+        env:
+          SDIST_URLS: ${{ needs.get-release.outputs.sdist_urls }}
+        run: |
+          set -euo pipefail
+          FAILED=0
+          TESTED=0
+
+          for URL in $(echo "$SDIST_URLS" | jq -r '.[]'); do
+            FILENAME="${URL##*/}"
+
+            # Only tarballs — never wheels
+            if [[ "$FILENAME" == *.whl ]]; then
+              echo "⏭  Skipping wheel: $FILENAME"; continue
+            fi
+            if [[ "$FILENAME" != *.tar.gz ]]; then
+              echo "⏭  Skipping non-tarball: $FILENAME"; continue
+            fi
+
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Testing sdist: $FILENAME (Python ${{ matrix.python }})"
+
+            if ! curl -fsSL --retry 3 --retry-delay 5 -o "$FILENAME" "$URL"; then
+              echo "❌ Download failed: $URL"
+              FAILED=$((FAILED + 1))
+              continue
+            fi
+            echo "Downloaded $(du -sh "$FILENAME" | cut -f1)"
+
+            rm -rf .venv-sdist
+            python -m venv .venv-sdist
+            VPY=".venv-sdist/bin/python"
+
+            "$VPY" -m pip install --upgrade pip --quiet
+
+            # Installing a local .tar.gz always builds the package from source
+            if "$VPY" -m pip install "./$FILENAME" \
+                && "$VPY" -m pip install $TEST_DEPS --quiet \
+                && "$VPY" abstract_test.py; then
+              echo "✅ PASSED: $FILENAME"
+              TESTED=$((TESTED + 1))
+            else
+              echo "❌ FAILED: $FILENAME"
+              FAILED=$((FAILED + 1))
+            fi
+
+            rm -rf "$FILENAME" .venv-sdist
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "sdist py${{ matrix.python }} — tested: $TESTED | failed: $FAILED"
+          [[ $TESTED -gt 0 ]]  || { echo "❌ No tarballs were found or tested!"; exit 1; }
+          [[ $FAILED -eq 0 ]]  || exit 1
+
+  # ───────────────────────────────────────────────
+  # Gate — requires Linux, macOS and sdist to pass
+  # ───────────────────────────────────────────────
+  all-passed:
+    name: All wheel tests passed
+    needs: [test-linux, test-macos, test-sdist]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          LINUX="${{ needs.test-linux.result }}"
+          MACOS="${{ needs.test-macos.result }}"
+          SDIST="${{ needs.test-sdist.result }}"
+          echo "Linux jobs : $LINUX"
+          echo "macOS jobs : $MACOS"
+          echo "sdist jobs : $SDIST"
+
+          if [[ "$LINUX" != "success" || "$MACOS" != "success" ]]; then
+            echo "❌ One or more wheel tests FAILED."
+            exit 1
+          fi
+          # sdist may be legitimately skipped if the release has no tarball
+          if [[ "$SDIST" != "success" && "$SDIST" != "skipped" ]]; then
+            echo "❌ Tarball tests FAILED."
+            exit 1
+          fi
+          echo "✅ All tests passed."
